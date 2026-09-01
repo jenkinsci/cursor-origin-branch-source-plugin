@@ -1,0 +1,5 @@
+<FindBugsFilter>
+  <Match>
+    <Class name="~io[.]jenkins[.]plugins[.]cursor_origin_branch_source[.]origin_openapi[.].+"/>
+  </Match>
+</FindBugsFilter>

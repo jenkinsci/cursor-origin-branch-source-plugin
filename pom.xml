@@ -36,11 +36,11 @@
     <jenkins.baseline>2.568</jenkins.baseline>
     <jenkins.version>${jenkins.baseline}.1</jenkins.version>
     <gitHubRepo>jenkinsci/${project.artifactId}-plugin</gitHubRepo>
-
     <spotless.check.skip>false</spotless.check.skip>
     <ban-junit4-imports.skip>false</ban-junit4-imports.skip>
     <ban-commons-lang-2.skip>false</ban-commons-lang-2.skip>
     <hpi.strictBundledArtifacts>true</hpi.strictBundledArtifacts>
+    <hpi.bundledArtifacts>jackson-databind-nullable</hpi.bundledArtifacts>
   </properties>
 
   <dependencyManagement>
@@ -57,8 +57,23 @@
 
   <dependencies>
     <dependency>
+      <groupId>io.jenkins.plugins</groupId>
+      <artifactId>jackson3-api</artifactId>
+    </dependency>
+    <dependency>
       <groupId>org.jenkins-ci.plugins</groupId>
       <artifactId>branch-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.openapitools</groupId>
+      <artifactId>jackson-databind-nullable</artifactId>
+      <version>0.2.11</version>
+    </dependency>
+    <dependency>
+      <groupId>com.google.code.findbugs</groupId>
+      <artifactId>annotations</artifactId>
+      <version>3.0.1</version>
+      <scope>provided</scope>
     </dependency>
   </dependencies>
 
@@ -74,4 +89,41 @@
       <url>https://repo.jenkins-ci.org/public/</url>
     </pluginRepository>
   </pluginRepositories>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.openapitools</groupId>
+        <artifactId>openapi-generator-maven-plugin</artifactId>
+        <version>7.25.0</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>generate</goal>
+            </goals>
+            <configuration>
+              <!-- https://cursor.com/docs/api/origin/openapi.yaml -->
+              <inputSpec>${project.basedir}/src/main/resources/origin-openapi.yaml</inputSpec>
+              <generatorName>java</generatorName>
+              <library>native</library>
+              <!-- TODO -attribute paths.'/v1/origin/repos/{identifier.ownerSlug}/{identifier.name}/git/matching-refs/{ref}'(get).operationId is repeated -->
+              <skipValidateSpec>true</skipValidateSpec>
+              <generateApiTests>false</generateApiTests>
+              <generateApiDocumentation>false</generateApiDocumentation>
+              <generateModelTests>false</generateModelTests>
+              <generateModelDocumentation>false</generateModelDocumentation>
+              <apiPackage>io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.api</apiPackage>
+              <modelPackage>io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model</modelPackage>
+              <!-- https://github.com/OpenAPITools/openapi-generator/issues/5800 -->
+              <supportingFilesToGenerate>ApiResponse.java,ProgressResponseBody.java,GzipRequestInterceptor.java,ProgressRequestBody.java,JSON.java,ServerVariable.java,StringUtil.java,Configuration.java,ApiClient.java,ApiCallback.java,ServerConfiguration.java,ApiException.java,Pair.java,ApiKeyAuth.java,HttpBasicAuth.java,HttpBearerAuth.java,Authentication.java,RFC3339JavaTimeModule.java,RFC3339DateFormat.java,RFC3339InstantDeserializer.java</supportingFilesToGenerate>
+              <configOptions>
+                <sourceFolder>.</sourceFolder>
+                <useJackson3>true</useJackson3>
+              </configOptions>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
 </project>
