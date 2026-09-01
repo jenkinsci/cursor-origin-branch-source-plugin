@@ -1,0 +1,1 @@
+This project uses https://cursor.com/docs/api/origin but you may refer to LLM-friendly index https://cursor.com/docs/api/origin/llms.txt or the complete reference https://cursor.com/docs/api/origin/llms-full.txt.
