@@ -12,8 +12,10 @@ import jenkins.scm.api.SCMProbeStat;
 /** Checks file existence in an Origin repo via the REST API without cloning. */
 class OriginSCMProbe extends SCMProbe {
 
+    private static final long serialVersionUID = 1L;
+
     private final String name;
-    private final OriginServiceApi api;
+    private transient final OriginServiceApi api;
     private final String owner;
     private final String repo;
     /** Branch name used as the git ref for file lookups. */
