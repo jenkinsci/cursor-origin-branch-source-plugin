@@ -35,8 +35,8 @@ public class CursorOriginAppCredentials extends BaseStandardCredentials implemen
     private static final long serialVersionUID = 1L;
 
     private final String appId;
-    private final Secret privateKey;
     private final String installationId;
+    private final Secret privateKey;
 
     @DataBoundConstructor
     public CursorOriginAppCredentials(
@@ -44,12 +44,24 @@ public class CursorOriginAppCredentials extends BaseStandardCredentials implemen
             String id,
             String description,
             String appId,
-            Secret privateKey,
-            String installationId) {
+            String installationId,
+            Secret privateKey) {
         super(scope, id, description);
         this.appId = appId;
-        this.privateKey = privateKey;
         this.installationId = installationId;
+        this.privateKey = privateKey;
+    }
+
+    public String getAppId() {
+        return appId;
+    }
+
+    public String getInstallationId() {
+        return installationId;
+    }
+
+    public Secret getPrivateKey() {
+        return privateKey;
     }
 
     @NonNull
@@ -237,11 +249,18 @@ public class CursorOriginAppCredentials extends BaseStandardCredentials implemen
     @Extension
     public static final class DescriptorImpl extends BaseStandardCredentialsDescriptor {
 
-        @NonNull
         @Override
         public String getDisplayName() {
             return "Cursor Origin App";
         }
-        // TODO: add doTestConnection
+
+        @Override
+        public String getDescription() {
+            return "Allow authentication to Cursor Origin repositories as an app.";
+        }
+
+        // could override getIconClassName but Ionicons will not have the Cursor icon
+
+        // TODO: add doTestConnection; also form validation on syntax on all three fields
     }
 }
