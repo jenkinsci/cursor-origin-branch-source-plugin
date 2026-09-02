@@ -13,7 +13,9 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
 /**
- * Live integration test for Cursor Origin App authentication.
+ * Live test for Cursor Origin App authentication.
+ * Runs like a unit test outside any Jenkins context, just focusing on the actual token construction,
+ * proving that the resulting token can actually be used to call representative Origin REST APIs.
  * Skipped automatically when the required environment variables are absent (e.g. in CI).
  *
  * Required env vars:
@@ -23,7 +25,7 @@ import org.junit.jupiter.api.Test;
  *   CURSOR_ORIGIN_TEST_REPO_OWNER – owner slug of a repo accessible to the installation
  *   CURSOR_ORIGIN_TEST_REPO_NAME  – name of that repo
  */
-class CursorOriginAppCredentialsIT {
+class CursorOriginAppCredentialsLiveTest {
 
     @Test
     void appAuthCanReadRepoContents() throws Exception {
