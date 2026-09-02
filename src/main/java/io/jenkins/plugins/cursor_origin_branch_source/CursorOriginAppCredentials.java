@@ -1,6 +1,7 @@
 package io.jenkins.plugins.cursor_origin_branch_source;
 
 import com.cloudbees.plugins.credentials.CredentialsScope;
+import com.cloudbees.plugins.credentials.CredentialsSnapshotTaker;
 import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
 import com.cloudbees.plugins.credentials.impl.BaseStandardCredentials;
 import edu.umd.cs.findbugs.annotations.NonNull;
@@ -127,6 +128,24 @@ public class CursorOriginAppCredentials extends BaseStandardCredentials implemen
                     new EncryptedObject<>(new TokenMintingData(appId, installationId, privateKey.getEncryptedValue())));
         }
         return this;
+    }
+
+    /**
+     * Prevents {@code UsernamePasswordCredentialsSnapshotTaker} from freezing the ephemeral
+     * installation token into a static credential, which would break subsequent token refreshes.
+     */
+    @Extension
+    public static class CursorOriginAppCredentialsSnapshotTaker
+            extends CredentialsSnapshotTaker<CursorOriginAppCredentials> {
+        @Override
+        public Class<CursorOriginAppCredentials> type() {
+            return CursorOriginAppCredentials.class;
+        }
+
+        @Override
+        public CursorOriginAppCredentials snapshot(CursorOriginAppCredentials credentials) {
+            return credentials;
+        }
     }
 
     record TokenMintingData(String appId, String installationId, String encryptedPrivateKey) implements Serializable {
