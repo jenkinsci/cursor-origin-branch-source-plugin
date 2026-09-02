@@ -1,0 +1,149 @@
+= Cursor Origin Branch Source Plugin — Design Notes
+:toc:
+:toc-placement: preamble
+
+A Jenkins Branch Source plugin that discovers and builds branches and pull requests
+from https://cursor.com[Cursor Origin] repositories.
+
+== Goals and Non-Goals
+
+=== In scope (v1 demo)
+* Authenticate to the Origin REST API as a Cursor Origin App (JWT → installation access token).
+* `OriginSCMSource`: discover branches and pull requests in a single repo.
+* `OriginSCMNavigator`: discover all repos in a team namespace matching a regex.
+* Polling-based trigger (no webhooks yet).
+* HTTPS git checkout using the same app installation token (Basic auth: `x-access-token` / token).
+
+=== Out of scope for now
+* Commit status notifications (dedicated API to be integrated later).
+* Webhooks.
+* Tag discovery.
+* SSH checkout.
+* `SCMProbe` REST shortcut — implemented via `OriginSCMProbe` using `originServiceGetContents`.
+* Rate limiting, caching, lazy iterables.
+* Avatars.
+* Personal access tokens (only `CursorOriginAppCredentials`).
+
+== Authentication
+
+`CursorOriginAppCredentials` already exists.
+It implements `StandardUsernamePasswordCredentials`:
+* `getUsername()` → `"x-access-token"`
+* `getPassword()` → a freshly-minted installation access token (JWT exchange via REST).
+
+Git HTTPS clone uses Basic auth with these values; the Origin git server at
+`origin.cursor.com` explicitly requires Basic auth (Bearer is rejected).
+`AbstractGitSCMSource` handles credential injection automatically via standard Jenkins git credential support.
+
+== Class Structure
+
+=== `OriginSCMSource extends AbstractGitSCMSource`
+
+Fields:
+* `String credentialsId`
+* `String repoOwner`
+* `String repository`
+* `List<SCMSourceTrait> traits` (initially: `BranchDiscoveryTrait`, `PullRequestDiscoveryTrait`)
+
+Key methods:
+* `getCredentialsId()` → `credentialsId` (required by `AbstractGitSCMSource`)
+* `getRemote()` → `repo.getCloneUrl()` (format: `https://origin.cursor.com/git/OWNER/REPO.git`)
+* `retrieve(SCMSourceCriteria, SCMHeadObserver, SCMHeadEvent, TaskListener)` — drives REST discovery
+
+`retrieve()` flow:
+1. Mint token via `CursorOriginAppCredentials`.
+2. If PR discovery enabled: fetch PR list (open only) and record PR head branch names.
+3. If branch discovery enabled: for each branch — skip if its name is a PR head branch,
+   otherwise create plain `SCMHead` + `SCMRevisionImpl(sha)` and call `request.process()`.
+4. If PR discovery enabled: for each open PR — create `OriginPullRequestSCMHead` +
+   `OriginPullRequestSCMRevision` and call `request.process()`.
+
+=== `BranchSCMHead`
+
+Standard `jenkins.scm.api.SCMHead` subclass, name = branch name.
+Revision = `AbstractGitSCMSource.SCMRevisionImpl` (single commit SHA).
+
+=== `PullRequestSCMHead`
+
+Extends `SCMHead`, name = `PR-<number>`.
+Holds: PR number (string), head branch name, head SHA, base branch name, base SHA.
+
+Since Origin has no forks, the PR head branch is always in the same repo.
+Checkout uses `refs/heads/<headBranch>` pinned to the head SHA from PR metadata.
+
+=== `PullRequestSCMRevision`
+
+Holds head `SCMRevisionImpl` + target branch name + target SHA.
+Does not implement merge mode.
+
+=== `OriginSCMSourceContext / OriginSCMSourceRequest`
+
+Thin wrappers (modelled on GitHub equivalents) that carry `wantBranches` / `wantPRs` booleans
+populated from traits, plus the list of `SCMSourceTrait` instances.
+
+=== `OriginSCMBuilder extends GitSCMBuilder<OriginSCMBuilder>`
+
+Builds the `GitSCM` checkout step.
+* Branch checkout: `+refs/heads/<name>:refs/remotes/origin/<name>`
+* PR HEAD checkout: depends on whether Origin exposes `refs/pull/NNN/head`; otherwise use head branch refspec.
+
+=== `OriginSCMNavigator extends SCMNavigator`
+
+Fields:
+* `String repoOwner` (team slug)
+* `String credentialsId`
+* `String pattern` (regex, default `.*`)
+* `List<SCMSourceTrait> traits`
+
+`visitSources()` flow:
+1. Call `GET /v1/origin/installation/repos` (lists repos the installation has access to).
+2. Filter by `repoOwner` + name matches `pattern`.
+3. For each matching repo, call `observer.observe(new OriginSCMSource(...))`.
+
+Alternatively use `GET /v1/origin/repos/{ownerSlug}` (namespace listing).
+See <<_open_questions>>.
+
+=== Traits
+
+`BranchDiscoveryTrait`::
+  Simple on/off.
+
+`PullRequestDiscoveryTrait`::
+  HEAD-only (no merge mode).
+  When enabled, the branch loop in `OriginSCMSource.retrieve()` skips any branch whose name
+  matches the head branch of an open PR, so each origin PR appears exactly once (as `PR-N`)
+  rather than twice (branch + PR).
+
+== Git Refspecs
+
+=== Branches
+Standard: `+refs/heads/*:refs/remotes/origin/*`
+
+=== Pull Requests
+No forks ⇒ no special PR refs needed. Use `+refs/heads/<headBranch>:refs/remotes/origin/<headBranch>`
+and pin to the head SHA from PR metadata.
+
+== Open Questions
+
+[[_open_questions]]
+. **Navigator repo listing API** — Resolved: use `GET /v1/origin/installation/repos`.
+  This returns all repos the app installation is granted access to, regardless of whether
+  the app is installed on individual repos or the whole team.
+  The `repoOwner` field on the navigator is retained as a display label / owner filter
+  (installations spanning multiple namespaces can be narrowed down).
+
+. **`SCMProbe`** — Implemented as `OriginSCMProbe`.
+  Uses `originServiceGetContents` to check for `Jenkinsfile` (or other criteria) without a full clone.
+  Returns `NONEXISTENT` on 404, `REGULAR_FILE` for files, `DIRECTORY` for directories.
+
+== Testing Plan
+
+=== Phase 1 — Demo (hpi:run + Playwright)
+. Install Pipeline: Multibranch plugin into `work/plugins/`.
+. Create a multibranch pipeline job pointed at a test repo using an `OriginSCMSource` credential.
+. Scan: expect one branch per branch in the repo and one job per open PR.
+. Trigger a build; verify `Jenkinsfile` runs.
+
+=== Phase 2 — WireMock unit tests
+. Record/scrub Origin API responses for a test repo.
+. Write `OriginSCMSourceTest` exercising branch + PR discovery with recorded responses.

@@ -88,6 +88,11 @@
       <version>3.0.1</version>
       <scope>provided</scope>
     </dependency>
+    <dependency>
+      <groupId>org.jenkins-ci.plugins.workflow</groupId>
+      <artifactId>workflow-multibranch</artifactId>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <repositories>
@@ -136,6 +141,15 @@
             </configuration>
           </execution>
         </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.jenkins-ci.tools</groupId>
+        <artifactId>maven-hpi-plugin</artifactId>
+        <configuration>
+          <loggers>
+            <io.jenkins.plugins.cursor_origin_branch_source>FINE</io.jenkins.plugins.cursor_origin_branch_source>
+          </loggers>
+        </configuration>
       </plugin>
     </plugins>
   </build>
