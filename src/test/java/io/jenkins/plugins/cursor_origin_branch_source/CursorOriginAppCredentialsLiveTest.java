@@ -19,10 +19,10 @@ import org.junit.jupiter.api.Test;
  * Skipped automatically when the required environment variables are absent (e.g. in CI).
  *
  * Required env vars:
- *   CURSOR_ORIGIN_APP_ID          – app identifier used as the JWT issuer
- *   CURSOR_ORIGIN_APP_PK_FILE     – path to a PKCS#8 PEM Ed25519 private key file
- *   CURSOR_ORIGIN_INSTALLATION_ID – installation ID to scope the token to
- *   CURSOR_ORIGIN_TEST_REPO_OWNER – owner slug of a repo accessible to the installation
+ *   CURSOR_ORIGIN_APP_ID          – app identifier used as the JWT issuer, displayed at https://cursor.com/codebase/settings/apps/$slug
+ *   CURSOR_ORIGIN_APP_PK_FILE     – path to a PKCS#8 PEM Ed25519 private key file {@code origin-app-private.pem} https://cursor.com/docs/api/origin#generate-an-app-signing-key
+ *   CURSOR_ORIGIN_INSTALLATION_ID – installation ID to scope the token to; take from URL https://cursor.com/codebase/settings/apps/installations/$id
+ *   CURSOR_ORIGIN_TEST_REPO_OWNER – owner slug of a repo accessible to the installation https://cursor.com/codebase/$owner/$name/settings/apps
  *   CURSOR_ORIGIN_TEST_REPO_NAME  – name of that repo
  */
 class CursorOriginAppCredentialsLiveTest {
