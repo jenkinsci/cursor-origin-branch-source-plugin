@@ -130,24 +130,6 @@ public class CursorOriginAppCredentials extends BaseStandardCredentials implemen
         return this;
     }
 
-    /**
-     * Prevents {@code UsernamePasswordCredentialsSnapshotTaker} from freezing the ephemeral
-     * installation token into a static credential, which would break subsequent token refreshes.
-     */
-    @Extension
-    public static class CursorOriginAppCredentialsSnapshotTaker
-            extends CredentialsSnapshotTaker<CursorOriginAppCredentials> {
-        @Override
-        public Class<CursorOriginAppCredentials> type() {
-            return CursorOriginAppCredentials.class;
-        }
-
-        @Override
-        public CursorOriginAppCredentials snapshot(CursorOriginAppCredentials credentials) {
-            return credentials;
-        }
-    }
-
     record TokenMintingData(String appId, String installationId, String encryptedPrivateKey) implements Serializable {
         @Serial
         private static final long serialVersionUID = 1L;
@@ -231,6 +213,24 @@ public class CursorOriginAppCredentials extends BaseStandardCredentials implemen
                     data.appId(),
                     data.installationId(),
                     Secret.fromString(data.encryptedPrivateKey()).getPlainText());
+        }
+    }
+
+    /**
+     * Prevents {@code UsernamePasswordCredentialsSnapshotTaker} from freezing the ephemeral
+     * installation token into a static credential, which would break subsequent token refreshes.
+     */
+    @Extension
+    public static class CursorOriginAppCredentialsSnapshotTaker
+            extends CredentialsSnapshotTaker<CursorOriginAppCredentials> {
+        @Override
+        public Class<CursorOriginAppCredentials> type() {
+            return CursorOriginAppCredentials.class;
+        }
+
+        @Override
+        public CursorOriginAppCredentials snapshot(CursorOriginAppCredentials credentials) {
+            return credentials;
         }
     }
 
