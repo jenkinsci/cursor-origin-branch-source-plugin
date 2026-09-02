@@ -124,7 +124,7 @@ public class CursorOriginAppCredentials extends BaseStandardCredentials implemen
             return new DelegatingCursorOriginAppCredentials(
                     getId(),
                     getDescription(),
-                    new TrustedObject<>(new TokenMintingData(appId, installationId, privateKey.getEncryptedValue())));
+                    new EncryptedObject<>(new TokenMintingData(appId, installationId, privateKey.getEncryptedValue())));
         }
         return this;
     }
@@ -142,10 +142,10 @@ public class CursorOriginAppCredentials extends BaseStandardCredentials implemen
 
         private final String id;
         private final String description;
-        private final TrustedObject<TokenMintingData> trustedData;
+        private final EncryptedObject<TokenMintingData> trustedData;
 
         DelegatingCursorOriginAppCredentials(
-                String id, String description, TrustedObject<TokenMintingData> trustedData) {
+                String id, String description, EncryptedObject<TokenMintingData> trustedData) {
             this.id = id;
             this.description = description;
             this.trustedData = trustedData;
@@ -199,9 +199,9 @@ public class CursorOriginAppCredentials extends BaseStandardCredentials implemen
         @Serial
         private static final long serialVersionUID = 1L;
 
-        private final TrustedObject<TokenMintingData> trustedData;
+        private final EncryptedObject<TokenMintingData> trustedData;
 
-        MintToken(TrustedObject<TokenMintingData> trustedData) {
+        MintToken(EncryptedObject<TokenMintingData> trustedData) {
             this.trustedData = trustedData;
         }
 
