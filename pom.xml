@@ -72,11 +72,13 @@
       <artifactId>credentials</artifactId>
     </dependency>
     <dependency>
+      <!-- Unclear if this is important. Consider openApiNullable=false -->
       <groupId>org.openapitools</groupId>
       <artifactId>jackson-databind-nullable</artifactId>
       <version>0.2.11</version>
     </dependency>
     <dependency>
+      <!-- Unfortunately the generator wants to use javax.annotation. Check annotationLibrary=none -->
       <groupId>com.google.code.findbugs</groupId>
       <artifactId>annotations</artifactId>
       <version>3.0.1</version>
