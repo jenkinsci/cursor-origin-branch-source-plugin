@@ -1,5 +1,6 @@
 package io.jenkins.plugins.cursor_origin_branch_source;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -28,6 +29,7 @@ import jenkins.util.JenkinsJVM;
  * Furthermore, the agent cannot inspect the contents (beyond what it could guess based on serialized size).
  * Suitable for use as a field in a {@link SlaveToMasterCallable}.
  */
+@SuppressFBWarnings(value = "DMI_RANDOM_USED_ONLY_ONCE", justification = "used once per JVM, fine")
 public final class EncryptedObject<T extends Serializable> implements Serializable {
 
     private static final String KEY_ALGORITHM = "AES";
