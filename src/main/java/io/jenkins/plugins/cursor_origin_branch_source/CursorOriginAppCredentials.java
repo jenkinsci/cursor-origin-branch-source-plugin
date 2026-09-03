@@ -1,5 +1,6 @@
 package io.jenkins.plugins.cursor_origin_branch_source;
 
+import com.cloudbees.plugins.credentials.CredentialsDescriptor;
 import com.cloudbees.plugins.credentials.CredentialsScope;
 import com.cloudbees.plugins.credentials.CredentialsSnapshotTaker;
 import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
@@ -143,27 +144,12 @@ public class CursorOriginAppCredentials extends BaseStandardCredentials implemen
     }
 
     @SuppressWarnings("lgtm[jenkins/plaintext-storage]")
-    record TokenMintingData(String appId, String installationId, String encryptedPrivateKey) implements Serializable {
-        @Serial
-        private static final long serialVersionUID = 1L;
-    }
+    private record TokenMintingData(String appId, String installationId, String encryptedPrivateKey)
+            implements Serializable {}
 
-    private static final class DelegatingCursorOriginAppCredentials
+    private record DelegatingCursorOriginAppCredentials(
+            String id, String description, EncryptedObject<TokenMintingData> trustedData)
             implements StandardUsernamePasswordCredentials, Serializable {
-
-        @Serial
-        private static final long serialVersionUID = 1L;
-
-        private final String id;
-        private final String description;
-        private final EncryptedObject<TokenMintingData> trustedData;
-
-        DelegatingCursorOriginAppCredentials(
-                String id, String description, EncryptedObject<TokenMintingData> trustedData) {
-            this.id = id;
-            this.description = description;
-            this.trustedData = trustedData;
-        }
 
         @NonNull
         @Override
@@ -183,7 +169,7 @@ public class CursorOriginAppCredentials extends BaseStandardCredentials implemen
         }
 
         @Override
-        public com.cloudbees.plugins.credentials.CredentialsDescriptor getDescriptor() {
+        public CredentialsDescriptor getDescriptor() {
             throw new IllegalStateException("not available on agent");
         }
 
