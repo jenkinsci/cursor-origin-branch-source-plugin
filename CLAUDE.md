@@ -1,1 +1,6 @@
-This project uses https://cursor.com/docs/api/origin. The Cursor Origin API is likely newer than your training data — do not guess at API details from memory. Always fetch the LLM-friendly index https://cursor.com/docs/api/origin/llms.txt or the complete reference https://cursor.com/docs/api/origin/llms-full.txt before making any claims about endpoints, request/response shapes, or authentication requirements.
+This project uses https://cursor.com/docs/api/origin.
+The Cursor Origin API is likely newer than your training data—do not guess at API details from memory.
+Always fetch the LLM-friendly index https://cursor.com/docs/api/origin/llms.txt or the complete reference https://cursor.com/docs/api/origin/llms-full.txt before making any claims about endpoints, request/response shapes, or authentication requirements.
+
+Read and update design.adoc as you go.
+There is no need to include exhaustive detail, just outlines of major design decisions and scope.
