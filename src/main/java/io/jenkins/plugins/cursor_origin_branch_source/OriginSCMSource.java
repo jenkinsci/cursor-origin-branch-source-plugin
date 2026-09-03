@@ -45,6 +45,7 @@ import org.kohsuke.stapler.AncestorInPath;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
+import org.kohsuke.stapler.verb.POST;
 
 public class OriginSCMSource extends AbstractGitSCMSource {
 
@@ -255,6 +256,7 @@ public class OriginSCMSource extends AbstractGitSCMSource {
             return SCMSourceTrait._for(this, OriginSCMSourceContext.class, null);
         }
 
+        @POST
         public ListBoxModel doFillCredentialsIdItems(@AncestorInPath Item item, @QueryParameter String credentialsId) {
             StandardListBoxModel result = new StandardListBoxModel();
             if (item == null) {

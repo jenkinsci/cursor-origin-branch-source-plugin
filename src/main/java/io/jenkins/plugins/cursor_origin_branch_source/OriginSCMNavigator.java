@@ -30,6 +30,7 @@ import org.kohsuke.stapler.AncestorInPath;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
+import org.kohsuke.stapler.verb.POST;
 
 public class OriginSCMNavigator extends SCMNavigator {
 
@@ -152,6 +153,7 @@ public class OriginSCMNavigator extends SCMNavigator {
             return nav;
         }
 
+        @POST
         public ListBoxModel doFillCredentialsIdItems(@AncestorInPath Item item, @QueryParameter String credentialsId) {
             StandardListBoxModel result = new StandardListBoxModel();
             if (item == null) {
