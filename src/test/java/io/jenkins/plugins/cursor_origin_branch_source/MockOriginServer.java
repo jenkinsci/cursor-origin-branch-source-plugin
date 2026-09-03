@@ -23,11 +23,11 @@ import java.security.PublicKey;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
@@ -64,8 +64,8 @@ class MockOriginServer implements Closeable {
         final String defaultBranch;
         final List<MockBranch> branches = new ArrayList<>();
         final List<MockPR> pullRequests = new ArrayList<>();
-        /** Paths that exist as regular files (e.g. "Jenkinsfile"). */
-        final Set<String> files = ConcurrentHashMap.newKeySet();
+        /** path → UTF-8 content for files served by this repo */
+        final Map<String, String> files = new ConcurrentHashMap<>();
 
         MockRepo(String owner, String name, String defaultBranch) {
             this.owner = owner;
@@ -84,7 +84,12 @@ class MockOriginServer implements Closeable {
         }
 
         MockRepo file(String path) {
-            files.add(path);
+            files.put(path, "");
+            return this;
+        }
+
+        MockRepo file(String path, String content) {
+            files.put(path, content);
             return this;
         }
     }
@@ -330,14 +335,13 @@ class MockOriginServer implements Closeable {
     private void handleGetContents(HttpExchange he, MockRepo repo) throws IOException {
         String path = queryParam(he, "path");
         if (path == null || path.isBlank()) {
-            // root directory listing
             sendJson(he, 200, gen -> {
                 gen.writeStartObject();
                 gen.writeStringField("type", "dir");
                 gen.writeStringField("name", "");
                 gen.writeStringField("path", "");
                 gen.writeArrayFieldStart("entries");
-                for (String f : repo.files) {
+                for (String f : repo.files.keySet()) {
                     gen.writeStartObject();
                     gen.writeStringField("type", "file");
                     gen.writeStringField("name", f);
@@ -349,14 +353,17 @@ class MockOriginServer implements Closeable {
             });
             return;
         }
-        if (repo.files.contains(path)) {
+        String content = repo.files.get(path);
+        if (content != null) {
+            String b64 = Base64.getMimeEncoder(64, new byte[] {'\n'})
+                    .encodeToString(content.getBytes(StandardCharsets.UTF_8));
             sendJson(he, 200, gen -> {
                 gen.writeStartObject();
                 gen.writeStringField("type", "file");
                 gen.writeStringField("name", path.contains("/") ? path.substring(path.lastIndexOf('/') + 1) : path);
                 gen.writeStringField("path", path);
                 gen.writeStringField("encoding", "base64");
-                gen.writeStringField("content", "");
+                gen.writeStringField("content", b64);
                 gen.writeEndObject();
             });
         } else {
