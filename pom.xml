@@ -123,7 +123,7 @@
             </goals>
             <configuration>
               <!-- https://cursor.com/docs/api/origin/openapi.yaml -->
-              <inputSpec>${project.basedir}/src/main/resources/origin-openapi.yaml</inputSpec>
+              <inputSpec>${project.basedir}/src/main/openapi/origin-openapi.yaml</inputSpec>
               <generatorName>java</generatorName>
               <library>native</library>
               <!-- TODO -attribute paths.'/v1/origin/repos/{identifier.ownerSlug}/{identifier.name}/git/matching-refs/{ref}'(get).operationId is repeated -->
