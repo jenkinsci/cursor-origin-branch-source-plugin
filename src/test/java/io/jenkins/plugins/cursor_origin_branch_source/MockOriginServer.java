@@ -6,7 +6,9 @@ import com.sun.net.httpserver.Filter;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import edu.umd.cs.findbugs.annotations.NonNull;
+import io.jsonwebtoken.JwsHeader;
 import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.LocatorAdapter;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
@@ -14,13 +16,13 @@ import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.security.Key;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.PublicKey;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -214,15 +216,16 @@ class MockOriginServer implements Closeable {
             return;
         }
         String jwt = auth.substring("Bearer ".length());
-        // peek at the kid claim to find the right public key
-        String appId = jwtKid(jwt);
-        PublicKey appPublicKey = appPublicKeys.get(appId);
-        if (appPublicKey == null) {
-            sendError(he, 403, "unknown app: " + appId);
-            return;
-        }
         try {
-            Jwts.parser().verifyWith(appPublicKey).build().parseSignedClaims(jwt);
+            Jwts.parser()
+                    .keyLocator(new LocatorAdapter<>() {
+                        @Override
+                        protected Key locate(JwsHeader header) {
+                            return appPublicKeys.get(header.getKeyId());
+                        }
+                    })
+                    .build()
+                    .parseSignedClaims(jwt);
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "JWT verification failed", e);
             sendError(he, 403, "invalid JWT: " + e.getMessage());
@@ -421,18 +424,6 @@ class MockOriginServer implements Closeable {
             }
         }
         return null;
-    }
-
-    /** Decode the JWT header to extract the {@code kid} claim without verifying the signature. */
-    private static String jwtKid(String jwt) {
-        String headerB64 = jwt.split("\\.")[0];
-        String header = new String(Base64.getUrlDecoder().decode(headerB64), StandardCharsets.UTF_8);
-        // simple extraction without a full JSON parse
-        int kidIdx = header.indexOf("\"kid\"");
-        if (kidIdx < 0) throw new HaltException(403, "JWT missing kid");
-        int start = header.indexOf('"', kidIdx + 5) + 1;
-        int end = header.indexOf('"', start);
-        return header.substring(start, end);
     }
 
     private static void drainBody(HttpExchange he) {
