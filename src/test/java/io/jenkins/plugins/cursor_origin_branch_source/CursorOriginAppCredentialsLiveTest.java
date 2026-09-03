@@ -3,12 +3,14 @@ package io.jenkins.plugins.cursor_origin_branch_source;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import com.cloudbees.plugins.credentials.CredentialsProvider;
 import com.cloudbees.plugins.credentials.CredentialsScope;
 import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
 import hudson.Launcher;
@@ -99,7 +101,11 @@ class CursorOriginAppCredentialsLiveTest {
         var ws = agent.getWorkspaceRoot();
         assertThat(ws, notNullValue());
         ws.mkdirs();
-        ws.act(new UseCreds(creds, listener, ownerSlug, repoName));
+        ws.act(new UseCreds(
+                CredentialsProvider.snapshot(StandardUsernamePasswordCredentials.class, creds),
+                listener,
+                ownerSlug,
+                repoName));
     }
 
     /** https://cursor.com/docs/api/origin#git-https-authentication */
@@ -107,6 +113,8 @@ class CursorOriginAppCredentialsLiveTest {
             implements ControllerToAgentFileCallable<Void> {
         @Override
         public Void invoke(File f, VirtualChannel channel) throws IOException, InterruptedException {
+            var token = creds.getPassword().getPlainText();
+            assertThat("fresh token per request", creds.getPassword().getPlainText(), not(token));
             assertThat(
                     new Launcher.LocalLauncher(listener)
                             .launch()
@@ -115,8 +123,8 @@ class CursorOriginAppCredentialsLiveTest {
                             .cmds(
                                     "git",
                                     "clone",
-                                    "https://" + creds.getUsername() + ":" + creds.getPassword() + "@origin.cursor.com/"
-                                            + owner + "/" + repo + ".git",
+                                    "https://" + creds.getUsername() + ":" + token + "@origin.cursor.com/" + owner + "/"
+                                            + repo + ".git",
                                     ".")
                             .masks(false, false, true, false)
                             .join(),
