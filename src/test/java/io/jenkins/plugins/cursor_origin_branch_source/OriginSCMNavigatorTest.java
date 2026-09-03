@@ -19,6 +19,9 @@ import java.security.KeyPairGenerator;
 import java.util.Base64;
 import java.util.List;
 import jenkins.branch.BranchSource;
+import jenkins.branch.DefaultBranchPropertyStrategy;
+import jenkins.branch.NoTriggerBranchProperty;
+import jenkins.branch.NoTriggerOrganizationFolderProperty;
 import jenkins.branch.OrganizationFolder;
 import org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject;
 import org.junit.jupiter.api.AfterEach;
@@ -142,6 +145,7 @@ class OriginSCMNavigatorTest {
                 .pr(3, "hotfix", "eeee5555", "main", "dddd4444");
 
         OrganizationFolder folder = this.r.jenkins.createProject(OrganizationFolder.class, "acme");
+        folder.getProperties().add(new NoTriggerOrganizationFolderProperty("^$"));
         OriginSCMNavigator navigator = new OriginSCMNavigator(OWNER);
         navigator.setCredentialsId(CREDS_ID);
         folder.getNavigators().add(navigator);
@@ -202,7 +206,10 @@ class OriginSCMNavigatorTest {
         OriginSCMSource source = new OriginSCMSource(OWNER, repoName);
         source.setCredentialsId(CREDS_ID);
         source.setTraits(List.of(new BranchDiscoveryTrait(), new PullRequestDiscoveryTrait()));
-        mbp.getSourcesList().add(new BranchSource(source));
+        BranchSource branchSource = new BranchSource(source);
+        branchSource.setStrategy(
+                new DefaultBranchPropertyStrategy(new NoTriggerBranchProperty[] {new NoTriggerBranchProperty()}));
+        mbp.getSourcesList().add(branchSource);
         mbp.scheduleBuild2(0).getFuture().get();
         return mbp;
     }
