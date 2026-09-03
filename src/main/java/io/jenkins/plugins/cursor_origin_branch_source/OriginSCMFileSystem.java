@@ -82,8 +82,12 @@ class OriginSCMFileSystem extends SCMFileSystem {
         public SCMFileSystem build(@NonNull SCMSource source, @NonNull SCMHead head, @CheckForNull SCMRevision rev)
                 throws IOException, InterruptedException {
             OriginSCMSource src = (OriginSCMSource) source;
+            String credentialsId = src.getCredentialsId();
+            if (credentialsId == null) {
+                return null;
+            }
             CursorOriginAppCredentials creds = CredentialsProvider.findCredentialByIdInItem(
-                    src.getCredentialsId(), CursorOriginAppCredentials.class, src.getOwner(), ACL.SYSTEM2, null);
+                    credentialsId, CursorOriginAppCredentials.class, src.getOwner(), ACL.SYSTEM2, null);
             if (creds == null) {
                 return null;
             }
