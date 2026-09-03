@@ -8,3 +8,6 @@ There is no need to include exhaustive detail, just outlines of major design dec
 Import classes at the top of the file rather than using fully-qualified names inline.
 
 `~/.m2/settings.xml` activates the `may-spotless-apply` profile, so every `mvn test` / `mvn hpi:run` automatically runs Spotless formatting (including removing unused imports).
+
+When committing changes to Git after multiple user interactions, ensure that the commit message reflects the actual code changes since the last commit.
+The message should not mention changes that were attempted but then reverted or amended in the working copy.
