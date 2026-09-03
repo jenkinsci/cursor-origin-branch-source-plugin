@@ -15,7 +15,7 @@ class OriginSCMProbe extends SCMProbe {
     private static final long serialVersionUID = 1L;
 
     private final String name;
-    private transient final OriginServiceApi api;
+    private final transient OriginServiceApi api;
     private final String owner;
     private final String repo;
     /** Branch name used as the git ref for file lookups. */
