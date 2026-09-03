@@ -7,6 +7,7 @@ import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model.Conte
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -108,7 +109,7 @@ class OriginSCMFile extends SCMFile {
             if ("base64".equals(content.getEncoding())) {
                 return new ByteArrayInputStream(Base64.getMimeDecoder().decode(raw));
             }
-            return new ByteArrayInputStream(raw.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return new ByteArrayInputStream(raw.getBytes(StandardCharsets.UTF_8));
         } catch (ApiException e) {
             if (e.getCode() == 404) {
                 throw new IOException("File not found: " + getPath(), e);

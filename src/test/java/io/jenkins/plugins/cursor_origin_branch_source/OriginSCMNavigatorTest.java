@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import hudson.model.Item;
 import hudson.model.Result;
 import jenkins.branch.OrganizationFolder;
+import jenkins.test.RunMatchers;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
 import org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject;
@@ -16,12 +17,11 @@ import org.junit.jupiter.api.Test;
 
 class OriginSCMNavigatorTest extends MockOriginServerTestBase {
 
-    private static final String JENKINSFILE = "echo \"loading: ${readTrusted('some-file')}\"";
-    private static final String SOME_FILE = "hello from origin";
+    private static final String JENKINSFILE = "echo \"content: ${readTrusted('some-file')}\"";
 
     /**
      * OrganizationFolder scanning two repos: navigator discovers both, creates one multibranch
-     * project per repo, and builds succeed via SCMFileSystem lightweight checkout.
+     * project per repo, and builds succeed with branch-specific content via SCMFileSystem.
      */
     @Test
     void organizationFolderDiscoversTwoRepos() throws Exception {
@@ -29,13 +29,15 @@ class OriginSCMNavigatorTest extends MockOriginServerTestBase {
                 .addRepo(OWNER, "alpha", "main")
                 .branch("main", "aaaa1111")
                 .file("Jenkinsfile", JENKINSFILE)
-                .file("some-file", SOME_FILE);
+                .file("some-file", "alpha-main");
         mockServer
                 .addRepo(OWNER, "beta", "main")
                 .branch("main", "dddd4444")
+                .file("Jenkinsfile", JENKINSFILE)
+                .file("some-file", "beta-main")
                 .branch("hotfix", "eeee5555")
                 .file("Jenkinsfile", JENKINSFILE)
-                .file("some-file", SOME_FILE)
+                .file("some-file", "beta-hotfix")
                 .pr(3, "hotfix", "eeee5555", "main", "dddd4444");
 
         OrganizationFolder folder = r.jenkins.createProject(OrganizationFolder.class, "acme");
@@ -59,5 +61,13 @@ class OriginSCMNavigatorTest extends MockOriginServerTestBase {
         WorkflowRun betaMainBuild = betaMain.getLastBuild();
         assertNotNull(betaMainBuild);
         assertThat(betaMainBuild.getResult(), is(Result.SUCCESS));
+        assertThat(betaMainBuild, RunMatchers.logContains("content: beta-main"));
+
+        WorkflowJob betaPR3 = betaMbp.getItem("PR-3");
+        assertNotNull(betaPR3);
+        WorkflowRun betaPR3Build = betaPR3.getLastBuild();
+        assertNotNull(betaPR3Build);
+        assertThat(betaPR3Build.getResult(), is(Result.SUCCESS));
+        assertThat(betaPR3Build, RunMatchers.logContains("content: beta-hotfix"));
     }
 }
