@@ -142,6 +142,7 @@ public class CursorOriginAppCredentials extends BaseStandardCredentials implemen
         return this;
     }
 
+    @SuppressWarnings("lgtm[jenkins/plaintext-storage]")
     record TokenMintingData(String appId, String installationId, String encryptedPrivateKey) implements Serializable {
         @Serial
         private static final long serialVersionUID = 1L;
