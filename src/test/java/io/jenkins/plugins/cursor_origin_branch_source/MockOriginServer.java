@@ -97,9 +97,6 @@ class MockOriginServer implements Closeable {
     /** appId → public key used to verify incoming app-JWTs */
     private final Map<String, PublicKey> appPublicKeys = new ConcurrentHashMap<>();
 
-    /** valid access tokens issued by this server */
-    private final Set<String> validAccessTokens = ConcurrentHashMap.newKeySet();
-
     /** key pair used to sign / verify access tokens */
     private final KeyPair serverKeyPair;
 
@@ -242,7 +239,6 @@ class MockOriginServer implements Closeable {
                 .signWith(serverKeyPair.getPrivate())
                 .compact();
         String accessToken = "oit_" + payload;
-        validAccessTokens.add(accessToken);
 
         sendJson(he, 200, gen -> {
             gen.writeStartObject();
@@ -258,14 +254,11 @@ class MockOriginServer implements Closeable {
             throw new HaltException(401, "missing Bearer token");
         }
         String token = auth.substring("Bearer ".length());
-        if (!validAccessTokens.contains(token)) {
-            // also try verifying the JWT signature in case the Set was cleared
-            try {
-                String jwtPart = token.startsWith("oit_") ? token.substring(4) : token;
-                Jwts.parser().verifyWith(serverKeyPair.getPublic()).build().parseSignedClaims(jwtPart);
-            } catch (Exception e) {
-                throw new HaltException(401, "invalid access token");
-            }
+        try {
+            String jwtPart = token.startsWith("oit_") ? token.substring(4) : token;
+            Jwts.parser().verifyWith(serverKeyPair.getPublic()).build().parseSignedClaims(jwtPart);
+        } catch (Exception e) {
+            throw new HaltException(401, "invalid access token");
         }
     }
 
