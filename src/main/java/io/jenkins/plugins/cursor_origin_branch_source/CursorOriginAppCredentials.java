@@ -138,14 +138,13 @@ public class CursorOriginAppCredentials extends BaseStandardCredentials implemen
             return new DelegatingCursorOriginAppCredentials(
                     getId(),
                     getDescription(),
-                    new EncryptedObject<>(new TokenMintingData(appId, installationId, privateKey.getEncryptedValue())));
+                    new EncryptedObject<>(new TokenMintingData(appId, installationId, privateKey.getPlainText())));
         }
         return this;
     }
 
     @SuppressWarnings("lgtm[jenkins/plaintext-storage]")
-    private record TokenMintingData(String appId, String installationId, String encryptedPrivateKey)
-            implements Serializable {}
+    private record TokenMintingData(String appId, String installationId, String privateKey) implements Serializable {}
 
     private record DelegatingCursorOriginAppCredentials(
             String id, String description, EncryptedObject<TokenMintingData> trustedData)
@@ -207,11 +206,10 @@ public class CursorOriginAppCredentials extends BaseStandardCredentials implemen
 
         @Override
         public String call() throws Exception {
-            TokenMintingData data = trustedData.o();
             return doMintToken(
-                    data.appId(),
-                    data.installationId(),
-                    Secret.fromString(data.encryptedPrivateKey()).getPlainText());
+                    trustedData.o().appId(),
+                    trustedData.o().installationId(),
+                    trustedData.o().privateKey());
         }
     }
 
