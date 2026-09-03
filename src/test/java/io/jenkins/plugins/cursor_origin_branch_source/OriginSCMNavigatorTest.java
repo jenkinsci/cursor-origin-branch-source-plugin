@@ -33,6 +33,7 @@ class OriginSCMNavigatorTest extends MockOriginServerTestBase {
         navigator.setCredentialsId(CREDS_ID);
         folder.getNavigators().add(navigator);
         folder.scheduleBuild2(0).getFuture().get();
+        showIndexing(folder);
         r.waitUntilNoActivity();
 
         var projects = folder.getItems();

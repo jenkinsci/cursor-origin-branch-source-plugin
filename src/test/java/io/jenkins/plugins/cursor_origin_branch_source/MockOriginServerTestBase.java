@@ -1,5 +1,7 @@
 package io.jenkins.plugins.cursor_origin_branch_source;
 
+import com.cloudbees.hudson.plugins.folder.computed.ComputedFolder;
+import com.cloudbees.hudson.plugins.folder.computed.FolderComputation;
 import com.cloudbees.plugins.credentials.CredentialsProvider;
 import com.cloudbees.plugins.credentials.CredentialsScope;
 import com.cloudbees.plugins.credentials.CredentialsStore;
@@ -64,6 +66,13 @@ abstract class MockOriginServerTestBase {
     @AfterEach
     void tearDown() {
         CursorOriginAppCredentials.API_BASE_URI = savedBaseUri;
+    }
+
+    static void showIndexing(ComputedFolder<?> folder) throws Exception {
+        FolderComputation<?> computation = folder.getComputation();
+        System.out.println("---%<--- " + computation.getUrl());
+        computation.writeWholeLogTo(System.out);
+        System.out.println("---%<--- ");
     }
 
     /** Encodes an Ed25519 private key as a PKCS#8 PEM string (what the credentials class parses). */

@@ -98,6 +98,7 @@ class OriginSCMSourceTest extends MockOriginServerTestBase {
                 new DefaultBranchPropertyStrategy(new NoTriggerBranchProperty[] {new NoTriggerBranchProperty()}));
         mbp.getSourcesList().add(branchSource);
         mbp.scheduleBuild2(0).getFuture().get();
+        showIndexing(mbp);
         return mbp;
     }
 }
