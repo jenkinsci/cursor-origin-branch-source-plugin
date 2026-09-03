@@ -66,6 +66,8 @@ abstract class MockOriginServerTestBase {
         CredentialsStore store =
                 CredentialsProvider.lookupStores(r.jenkins).iterator().next();
         store.addCredentials(Domain.global(), creds);
+
+        r.jenkins.setQuietPeriod(0);
     }
 
     @AfterEach
