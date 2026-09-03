@@ -19,7 +19,6 @@ from https://cursor.com[Cursor Origin] repositories.
 * Webhooks.
 * Tag discovery.
 * SSH checkout.
-* `SCMProbe` REST shortcut — implemented via `OriginSCMProbe` using `originServiceGetContents`.
 * Rate limiting, caching, lazy iterables.
 * Avatars.
 * Personal access tokens (only `CursorOriginAppCredentials`).
@@ -47,7 +46,7 @@ Fields:
 
 Key methods:
 * `getCredentialsId()` → `credentialsId` (required by `AbstractGitSCMSource`)
-* `getRemote()` → `repo.getCloneUrl()` (format: `https://origin.cursor.com/git/OWNER/REPO.git`)
+* `getRemote()` → `https://origin.cursor.com/OWNER/REPO.git`
 * `retrieve(SCMSourceCriteria, SCMHeadObserver, SCMHeadEvent, TaskListener)` — drives REST discovery
 
 `retrieve()` flow:
@@ -138,12 +137,24 @@ and pin to the head SHA from PR metadata.
 
 == Testing Plan
 
-=== Phase 1 — Demo (hpi:run + Playwright)
-. Install Pipeline: Multibranch plugin into `work/plugins/`.
-. Create a multibranch pipeline job pointed at a test repo using an `OriginSCMSource` credential.
-. Scan: expect one branch per branch in the repo and one job per open PR.
-. Trigger a build; verify `Jenkinsfile` runs.
+=== Integration tests — `MockOriginServer`
 
-=== Phase 2 — WireMock unit tests
-. Record/scrub Origin API responses for a test repo.
-. Write `OriginSCMSourceTest` exercising branch + PR discovery with recorded responses.
+`MockOriginServer` (in `src/test/java`) runs an in-process `com.sun.net.httpserver.HttpServer`
+that simulates the Origin REST API with real JWT-based authentication:
+
+* The test generates a genuine Ed25519 key pair.
+* `CursorOriginAppCredentials` signs a real JWT with the private key.
+* The mock server verifies the JWT against the registered public key before issuing an `oit_` access token.
+* All state (repos, branches, PRs, file presence) lives in memory, populated via a builder API.
+
+`OriginSCMNavigatorTest` exercises five scenarios with `@WithJenkins` / `JenkinsRule`:
+
+. **`singleRepoWithBranchesAndPR`** — two branches + one open PR → main + PR-1 discovered; PR head branch excluded from branch jobs.
+. **`twoBranchesNoPRs`** — two branches, no PRs → both branch jobs created.
+. **`organizationFolderDiscoversTwoRepos`** — `OrganizationFolder` + `OriginSCMNavigator` scans two repos → two multibranch projects.
+. **`prHeadBranchExcludedFromBranchDiscovery`** — only branch is also PR head → PR appears, branch does not.
+. **`noJenkinsfileProducesNoJobs`** — repo without Jenkinsfile → `OriginSCMProbe` returns NONEXISTENT → no jobs.
+
+`CursorOriginAppCredentialsLiveTest` is a manual live test (requires env vars `ORIGIN_APP_PRIVATE_KEY_PEM`,
+`ORIGIN_APP_ID`, `ORIGIN_APP_INSTALLATION_ID`) that mints a real token against the production
+Origin API and verifies the credential `getPassword()` round-trip.

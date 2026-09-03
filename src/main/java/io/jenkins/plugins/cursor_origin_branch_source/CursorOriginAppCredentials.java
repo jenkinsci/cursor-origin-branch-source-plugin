@@ -30,7 +30,8 @@ import org.kohsuke.stapler.DataBoundConstructor;
 
 public class CursorOriginAppCredentials extends BaseStandardCredentials implements StandardUsernamePasswordCredentials {
 
-    static final String API_BASE_URI = "https://api.cursor.com";
+    /** Overridable in tests to point at a mock server. */
+    static String API_BASE_URI = "https://api.cursor.com";
 
     @Serial
     private static final long serialVersionUID = 1L;
