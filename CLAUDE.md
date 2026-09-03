@@ -4,3 +4,7 @@ Always fetch the LLM-friendly index https://cursor.com/docs/api/origin/llms.txt 
 
 Read and update design.adoc as you go.
 There is no need to include exhaustive detail, just outlines of major design decisions and scope.
+
+Import classes at the top of the file rather than using fully-qualified names inline.
+
+`~/.m2/settings.xml` activates the `may-spotless-apply` profile, so every `mvn test` / `mvn hpi:run` automatically runs Spotless formatting (including removing unused imports).

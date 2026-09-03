@@ -10,6 +10,7 @@ import io.jsonwebtoken.Jwts;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -19,6 +20,7 @@ import java.security.PublicKey;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -424,7 +426,7 @@ class MockOriginServer implements Closeable {
     /** Decode the JWT header to extract the {@code kid} claim without verifying the signature. */
     private static String jwtKid(String jwt) {
         String headerB64 = jwt.split("\\.")[0];
-        String header = new String(java.util.Base64.getUrlDecoder().decode(headerB64), StandardCharsets.UTF_8);
+        String header = new String(Base64.getUrlDecoder().decode(headerB64), StandardCharsets.UTF_8);
         // simple extraction without a full JSON parse
         int kidIdx = header.indexOf("\"kid\"");
         if (kidIdx < 0) throw new HaltException(403, "JWT missing kid");
@@ -435,7 +437,7 @@ class MockOriginServer implements Closeable {
 
     private static void drainBody(HttpExchange he) {
         try (InputStream is = he.getRequestBody()) {
-            is.transferTo(java.io.OutputStream.nullOutputStream());
+            is.transferTo(OutputStream.nullOutputStream());
         } catch (IOException ignored) {
         }
     }
