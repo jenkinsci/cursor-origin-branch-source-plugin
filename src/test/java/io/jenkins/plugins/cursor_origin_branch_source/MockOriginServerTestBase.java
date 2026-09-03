@@ -13,7 +13,9 @@ import java.util.Base64;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.AutoClose;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.jvnet.hudson.test.JenkinsRule;
+import org.jvnet.hudson.test.junit.jupiter.BuildWatcherExtension;
 import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
 
 /**
@@ -25,6 +27,9 @@ import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
  */
 @WithJenkins
 abstract class MockOriginServerTestBase {
+
+    @RegisterExtension
+    private static final BuildWatcherExtension BUILD_WATCHER = new BuildWatcherExtension();
 
     static final String OWNER = "acme-corp";
     static final String APP_ID = "test-app-1";
@@ -61,6 +66,8 @@ abstract class MockOriginServerTestBase {
         CredentialsStore store =
                 CredentialsProvider.lookupStores(r.jenkins).iterator().next();
         store.addCredentials(Domain.global(), creds);
+
+        r.jenkins.setQuietPeriod(0);
     }
 
     @AfterEach

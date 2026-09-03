@@ -23,11 +23,11 @@ import java.security.PublicKey;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
@@ -54,9 +54,41 @@ class MockOriginServer implements Closeable {
 
     // ── in-memory data model ────────────────────────────────────────────────
 
-    record MockBranch(String name, String sha) {}
-
     record MockPR(int number, String headBranch, String headSha, String baseBranch, String baseSha) {}
+
+    static class MockBranch {
+        final String name;
+        final String sha;
+        /** path → UTF-8 content; looked up by SHA or name when serving contents requests */
+        final Map<String, String> files = new HashMap<>();
+
+        private final MockRepo repo;
+
+        MockBranch(MockRepo repo, String name, String sha) {
+            this.repo = repo;
+            this.name = name;
+            this.sha = sha;
+        }
+
+        MockBranch file(String path) {
+            files.put(path, "");
+            return this;
+        }
+
+        MockBranch file(String path, String content) {
+            files.put(path, content);
+            return this;
+        }
+
+        MockBranch branch(String branchName, String branchSha) {
+            return repo.branch(branchName, branchSha);
+        }
+
+        MockRepo pr(int number, String headBranch, String headSha, String baseBranch, String baseSha) {
+            repo.pullRequests.add(new MockPR(number, headBranch, headSha, baseBranch, baseSha));
+            return repo;
+        }
+    }
 
     static class MockRepo {
         final String owner;
@@ -64,8 +96,6 @@ class MockOriginServer implements Closeable {
         final String defaultBranch;
         final List<MockBranch> branches = new ArrayList<>();
         final List<MockPR> pullRequests = new ArrayList<>();
-        /** Paths that exist as regular files (e.g. "Jenkinsfile"). */
-        final Set<String> files = ConcurrentHashMap.newKeySet();
 
         MockRepo(String owner, String name, String defaultBranch) {
             this.owner = owner;
@@ -73,18 +103,14 @@ class MockOriginServer implements Closeable {
             this.defaultBranch = defaultBranch;
         }
 
-        MockRepo branch(String branchName, String sha) {
-            branches.add(new MockBranch(branchName, sha));
-            return this;
+        MockBranch branch(String branchName, String sha) {
+            MockBranch b = new MockBranch(this, branchName, sha);
+            branches.add(b);
+            return b;
         }
 
         MockRepo pr(int number, String headBranch, String headSha, String baseBranch, String baseSha) {
             pullRequests.add(new MockPR(number, headBranch, headSha, baseBranch, baseSha));
-            return this;
-        }
-
-        MockRepo file(String path) {
-            files.add(path);
             return this;
         }
     }
@@ -288,9 +314,9 @@ class MockOriginServer implements Closeable {
             gen.writeArrayFieldStart("branches");
             for (MockBranch b : repo.branches) {
                 gen.writeStartObject();
-                gen.writeStringField("name", b.name());
+                gen.writeStringField("name", b.name);
                 gen.writeObjectFieldStart("commit");
-                gen.writeStringField("sha", b.sha());
+                gen.writeStringField("sha", b.sha);
                 gen.writeEndObject();
                 gen.writeEndObject();
             }
@@ -329,15 +355,16 @@ class MockOriginServer implements Closeable {
 
     private void handleGetContents(HttpExchange he, MockRepo repo) throws IOException {
         String path = queryParam(he, "path");
+        String ref = queryParam(he, "ref");
+        Map<String, String> files = findFilesForRef(repo, ref);
         if (path == null || path.isBlank()) {
-            // root directory listing
             sendJson(he, 200, gen -> {
                 gen.writeStartObject();
                 gen.writeStringField("type", "dir");
                 gen.writeStringField("name", "");
                 gen.writeStringField("path", "");
                 gen.writeArrayFieldStart("entries");
-                for (String f : repo.files) {
+                for (String f : files.keySet()) {
                     gen.writeStartObject();
                     gen.writeStringField("type", "file");
                     gen.writeStringField("name", f);
@@ -349,19 +376,38 @@ class MockOriginServer implements Closeable {
             });
             return;
         }
-        if (repo.files.contains(path)) {
+        String content = files.get(path);
+        if (content != null) {
+            String b64 = Base64.getMimeEncoder(64, new byte[] {'\n'})
+                    .encodeToString(content.getBytes(StandardCharsets.UTF_8));
             sendJson(he, 200, gen -> {
                 gen.writeStartObject();
                 gen.writeStringField("type", "file");
                 gen.writeStringField("name", path.contains("/") ? path.substring(path.lastIndexOf('/') + 1) : path);
                 gen.writeStringField("path", path);
                 gen.writeStringField("encoding", "base64");
-                gen.writeStringField("content", "");
+                gen.writeStringField("content", b64);
                 gen.writeEndObject();
             });
         } else {
             sendError(he, 404, "path not found: " + path);
         }
+    }
+
+    private static Map<String, String> findFilesForRef(MockRepo repo, String ref) {
+        if (ref != null) {
+            for (MockBranch b : repo.branches) {
+                if (ref.equals(b.sha)) {
+                    return b.files;
+                }
+            }
+            for (MockBranch b : repo.branches) {
+                if (ref.equals(b.name)) {
+                    return b.files;
+                }
+            }
+        }
+        return repo.branches.isEmpty() ? Map.of() : repo.branches.get(0).files;
     }
 
     // ── JSON helpers ─────────────────────────────────────────────────────────
