@@ -137,6 +137,7 @@ class OriginWebhookVerifier {
     private static final Duration JWKS_TIMEOUT = Duration.ofSeconds(10);
 
     private static List<PublicKey> fetchJwksKeys(String uri) throws IOException {
+        LOGGER.fine(() -> "Fetching JWKS from " + uri);
         try {
             HttpClient client = HttpClient.newBuilder()
                     .connectTimeout(JWKS_TIMEOUT)
