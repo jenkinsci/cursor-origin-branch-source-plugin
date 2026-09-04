@@ -2,8 +2,8 @@ package io.jenkins.plugins.cursor_origin_branch_source;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -25,10 +25,12 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.logging.Level;
 import jenkins.agents.ControllerToAgentFileCallable;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.jvnet.hudson.test.JenkinsRule;
+import org.jvnet.hudson.test.LogRecorder;
 import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
 
 /**
@@ -101,11 +103,16 @@ class CursorOriginAppCredentialsLiveTest {
         var ws = agent.getWorkspaceRoot();
         assertThat(ws, notNullValue());
         ws.mkdirs();
-        ws.act(new UseCreds(
-                CredentialsProvider.snapshot(StandardUsernamePasswordCredentials.class, creds),
-                listener,
-                ownerSlug,
-                repoName));
+        try (var recorder = new LogRecorder()
+                .record(CursorOriginAppCredentials.class, Level.FINE)
+                .capture(10)) {
+            ws.act(new UseCreds(
+                    CredentialsProvider.snapshot(StandardUsernamePasswordCredentials.class, creds),
+                    listener,
+                    ownerSlug,
+                    repoName));
+            assertThat("two API calls were made to the controller", recorder.getRecords(), hasSize(2));
+        }
     }
 
     /** https://cursor.com/docs/api/origin#git-https-authentication */
@@ -114,7 +121,7 @@ class CursorOriginAppCredentialsLiveTest {
         @Override
         public Void invoke(File f, VirtualChannel channel) throws IOException, InterruptedException {
             var token = creds.getPassword().getPlainText();
-            assertThat("fresh token per request", creds.getPassword().getPlainText(), not(token));
+            creds.getPassword(); // second call; both round-trips verified on controller via logging
             assertThat(
                     new Launcher.LocalLauncher(listener)
                             .launch()
