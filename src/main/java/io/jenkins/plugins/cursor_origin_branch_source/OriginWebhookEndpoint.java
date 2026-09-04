@@ -83,7 +83,7 @@ public class OriginWebhookEndpoint implements UnprotectedRootAction {
         public boolean process(HttpServletRequest req, HttpServletResponse resp, FilterChain chain)
                 throws IOException, ServletException {
             String pathInfo = req.getPathInfo();
-            if (pathInfo != null && pathInfo.startsWith("/cursor-origin-webhook/")) {
+            if ("/cursor-origin-webhook/".equals(pathInfo)) {
                 chain.doFilter(req, resp);
                 return true;
             }

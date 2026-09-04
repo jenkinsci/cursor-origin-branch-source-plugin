@@ -29,11 +29,11 @@ class OriginWebhookVerifier {
     static final Duration CLOCK_SKEW = Duration.ofSeconds(300);
 
     private static final ConcurrentHashMap<String, CachedKeys> KEY_CACHE = new ConcurrentHashMap<>();
-    private static final long CACHE_TTL_SECONDS = 300;
+    private static final Duration CACHE_TTL = Duration.ofSeconds(300);
 
     private record CachedKeys(Instant fetchedAt, List<PublicKey> keys) {
         boolean isExpired() {
-            return Instant.now().isAfter(fetchedAt.plusSeconds(CACHE_TTL_SECONDS));
+            return Instant.now().isAfter(fetchedAt.plus(CACHE_TTL));
         }
     }
 
