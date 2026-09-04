@@ -200,9 +200,7 @@ class OriginWebhookEndpointTest extends MockOriginServerTestBase {
         HttpRequest req = HttpRequest.newBuilder(URI.create(webhookUrl))
                 .header("Content-Type", "application/octet-stream")
                 .header("webhook-id", "whd_big")
-                .header(
-                        "webhook-timestamp",
-                        String.valueOf(Instant.now().getEpochSecond()))
+                .header("webhook-timestamp", String.valueOf(Instant.now().getEpochSecond()))
                 .header("webhook-signature", "v1ed,AAAA")
                 .POST(HttpRequest.BodyPublishers.ofByteArray(bigBody))
                 .build();
@@ -265,5 +263,4 @@ class OriginWebhookEndpointTest extends MockOriginServerTestBase {
         folder.scheduleBuild2(0).getFuture().get();
         return folder;
     }
-
 }
