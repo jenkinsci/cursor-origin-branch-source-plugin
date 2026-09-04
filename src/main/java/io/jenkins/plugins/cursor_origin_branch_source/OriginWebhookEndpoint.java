@@ -44,6 +44,7 @@ public class OriginWebhookEndpoint implements UnprotectedRootAction {
         return "cursor-origin-webhook";
     }
 
+    @SuppressWarnings("lgtm[jenkins/no-permission-check]")
     @POST
     public HttpResponse doIndex(StaplerRequest2 req, StaplerResponse2 rsp) throws IOException {
         byte[] rawBody = req.getInputStream().readAllBytes();
