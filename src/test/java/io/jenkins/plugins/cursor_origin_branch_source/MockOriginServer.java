@@ -148,6 +148,10 @@ class MockOriginServer implements Closeable {
         }
     }
 
+    KeyPair serverKeyPair() {
+        return serverKeyPair;
+    }
+
     // ── builder API ─────────────────────────────────────────────────────────
 
     /** Register an app's public key so that JWTs it signs will be accepted. */

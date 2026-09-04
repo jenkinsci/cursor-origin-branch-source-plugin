@@ -12,6 +12,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.time.Instant;
 import java.util.concurrent.TimeUnit;
 import jenkins.branch.OrganizationFolder;
 import org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject;
@@ -199,7 +202,7 @@ class OriginWebhookEndpointTest extends MockOriginServerTestBase {
                 .header("webhook-id", "whd_big")
                 .header(
                         "webhook-timestamp",
-                        String.valueOf(java.time.Instant.now().getEpochSecond()))
+                        String.valueOf(Instant.now().getEpochSecond()))
                 .header("webhook-signature", "v1ed,AAAA")
                 .POST(HttpRequest.BodyPublishers.ofByteArray(bigBody))
                 .build();
@@ -214,9 +217,9 @@ class OriginWebhookEndpointTest extends MockOriginServerTestBase {
         String tamperedBody = "{\"deliveryId\":\"whd_test\",\"event\":{\"type\":\"malicious\",\"payload\":{}}}";
 
         // Sign the original but send the tampered body
-        long ts = java.time.Instant.now().getEpochSecond();
+        long ts = Instant.now().getEpochSecond();
         var headers = OriginWebhookVerifierTest.signedHeaders(
-                "whd_test", ts, originalBody.getBytes(StandardCharsets.UTF_8), getServerKeyPair());
+                "whd_test", ts, originalBody.getBytes(StandardCharsets.UTF_8), mockServer.serverKeyPair());
 
         HttpClient client = HttpClient.newHttpClient();
         HttpRequest req = HttpRequest.newBuilder(URI.create(webhookUrl))
@@ -233,11 +236,11 @@ class OriginWebhookEndpointTest extends MockOriginServerTestBase {
     @Test
     void wrongKeyIsRejected() throws Exception {
         byte[] body = "{\"event\":{\"type\":\"ping\"}}".getBytes(StandardCharsets.UTF_8);
-        long ts = java.time.Instant.now().getEpochSecond();
+        long ts = Instant.now().getEpochSecond();
 
         // Sign with a random key pair (not the mock server's key)
-        java.security.KeyPairGenerator gen = java.security.KeyPairGenerator.getInstance("Ed25519");
-        java.security.KeyPair wrongKey = gen.generateKeyPair();
+        KeyPairGenerator gen = KeyPairGenerator.getInstance("Ed25519");
+        KeyPair wrongKey = gen.generateKeyPair();
         var headers = OriginWebhookVerifierTest.signedHeaders("whd_bad", ts, body, wrongKey);
 
         HttpClient client = HttpClient.newHttpClient();
@@ -263,10 +266,4 @@ class OriginWebhookEndpointTest extends MockOriginServerTestBase {
         return folder;
     }
 
-    /** Access the mock server's key pair via reflection for the reject test. */
-    private java.security.KeyPair getServerKeyPair() throws Exception {
-        var field = MockOriginServer.class.getDeclaredField("serverKeyPair");
-        field.setAccessible(true);
-        return (java.security.KeyPair) field.get(mockServer);
-    }
 }
