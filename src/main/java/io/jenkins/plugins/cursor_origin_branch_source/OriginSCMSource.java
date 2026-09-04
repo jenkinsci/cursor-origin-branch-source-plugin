@@ -15,6 +15,7 @@ import hudson.util.ListBoxModel;
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.ApiException;
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.api.OriginServiceApi;
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model.Branch;
+import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model.GitRef;
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model.ListBranchesResponse;
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model.ListPullRequestsResponse;
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model.PullRequest;
@@ -97,8 +98,12 @@ public class OriginSCMSource extends AbstractGitSCMSource {
     }
 
     private CursorOriginAppCredentials lookupCredentials() {
+        return lookupCredentials(getOwner());
+    }
+
+    private CursorOriginAppCredentials lookupCredentials(@CheckForNull Item context) {
         return CredentialsProvider.findCredentialByIdInItem(
-                credentialsId, CursorOriginAppCredentials.class, getOwner(), ACL.SYSTEM2, null);
+                credentialsId, CursorOriginAppCredentials.class, context, ACL.SYSTEM2, null);
     }
 
     @Override
@@ -172,6 +177,48 @@ public class OriginSCMSource extends AbstractGitSCMSource {
             }
         } catch (ApiException e) {
             throw new IOException("Origin API error during source scan", e);
+        }
+    }
+
+    @NonNull
+    @Override
+    protected Set<String> retrieveRevisions(@NonNull TaskListener listener, @CheckForNull Item context)
+            throws IOException, InterruptedException {
+        CursorOriginAppCredentials creds = lookupCredentials(context);
+        if (creds == null) {
+            throw new IOException("No credentials found with id: " + credentialsId);
+        }
+        OriginServiceApi api = CursorOriginAppCredentials.apiWithToken(creds.mintToken());
+        try {
+            ListBranchesResponse resp = api.originServiceListBranches(repoOwner, repository, null, null);
+            Set<String> revisions = new HashSet<>();
+            for (Branch branch : resp.getBranches()) {
+                revisions.add(branch.getName());
+            }
+            return revisions;
+        } catch (ApiException e) {
+            throw new IOException("Origin API error listing revisions for " + repoOwner + "/" + repository, e);
+        }
+    }
+
+    @Override
+    protected SCMRevision retrieve(
+            @NonNull String thingName, @NonNull TaskListener listener, @CheckForNull Item context)
+            throws IOException, InterruptedException {
+        CursorOriginAppCredentials creds = lookupCredentials(context);
+        if (creds == null) {
+            throw new IOException("No credentials found with id: " + credentialsId);
+        }
+        OriginServiceApi api = CursorOriginAppCredentials.apiWithToken(creds.mintToken());
+        try {
+            GitRef ref = api.originServiceGetGitRef(repoOwner, repository, "heads/" + thingName);
+            return new AbstractGitSCMSource.SCMRevisionImpl(
+                    new SCMHead(thingName), ref.getObject().getSha());
+        } catch (ApiException e) {
+            if (e.getCode() == 404) {
+                return null;
+            }
+            throw new IOException("Origin API error retrieving revision for " + thingName, e);
         }
     }
 
