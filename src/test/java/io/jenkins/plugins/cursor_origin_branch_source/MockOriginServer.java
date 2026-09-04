@@ -9,23 +9,32 @@ import edu.umd.cs.findbugs.annotations.NonNull;
 import io.jsonwebtoken.JwsHeader;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.LocatorAdapter;
+import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.security.Key;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.security.MessageDigest;
 import java.security.PublicKey;
+import java.security.Signature;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -154,6 +163,21 @@ class MockOriginServer implements Closeable {
         return repo;
     }
 
+    /** Replace an existing repo with a new one (for simulating mid-test state changes). */
+    MockRepo replaceRepo(@NonNull String owner, @NonNull String name, @NonNull String defaultBranch) {
+        MockRepo repo = new MockRepo(owner, name, defaultBranch);
+        repos.computeIfAbsent(owner, k -> new HashMap<>()).put(name, repo);
+        return repo;
+    }
+
+    /** Remove a repo (simulating deletion). */
+    void removeRepo(@NonNull String owner, @NonNull String name) {
+        Map<String, MockRepo> ownerRepos = repos.get(owner);
+        if (ownerRepos != null) {
+            ownerRepos.remove(name);
+        }
+    }
+
     // ── lifecycle ────────────────────────────────────────────────────────────
 
     String start() throws IOException {
@@ -166,6 +190,7 @@ class MockOriginServer implements Closeable {
                 .getFilters()
                 .add(filter);
         server.createContext("/v1/origin/repos/", he -> {}).getFilters().add(filter);
+        server.createContext("/v1/origin/keys", he -> {}).getFilters().add(filter);
         server.start();
         InetSocketAddress addr = server.getAddress();
         baseUrl = "http://" + addr.getHostString() + ":" + addr.getPort();
@@ -189,6 +214,11 @@ class MockOriginServer implements Closeable {
         Matcher tokenMatcher = TOKEN_PATH.matcher(path);
         if ("POST".equals(method) && tokenMatcher.matches()) {
             handleTokenExchange(he, tokenMatcher.group(1));
+            return;
+        }
+
+        if ("/v1/origin/keys".equals(path) && "GET".equals(method)) {
+            handleGetJwks(he);
             return;
         }
 
@@ -291,6 +321,81 @@ class MockOriginServer implements Closeable {
     }
 
     // ── endpoint handlers ───────────────────────────────────────────────────
+
+    private void handleGetJwks(HttpExchange he) throws IOException {
+        byte[] encoded = serverKeyPair.getPublic().getEncoded();
+        byte[] rawKey = Arrays.copyOfRange(encoded, encoded.length - 32, encoded.length);
+        String x = Base64.getUrlEncoder().withoutPadding().encodeToString(rawKey);
+        sendJson(he, 200, gen -> {
+            gen.writeStartObject();
+            gen.writeArrayFieldStart("keys");
+            gen.writeStartObject();
+            gen.writeStringField("kty", "OKP");
+            gen.writeStringField("crv", "Ed25519");
+            gen.writeStringField("x", x);
+            gen.writeEndObject();
+            gen.writeEndArray();
+            gen.writeEndObject();
+        });
+    }
+
+    /**
+     * Signs and delivers a webhook event to the given URL, emulating the Cursor Origin server.
+     *
+     * @param hookUrl destination URL (e.g. Jenkins root + "cursor-origin-webhook/")
+     * @param appId app ID for the envelope
+     * @param installationId installation ID for the envelope
+     * @param eventType event type slug (e.g. "repository.pushed")
+     * @param payloadWriter writes the event payload JSON object
+     */
+    void deliverWebhook(
+            String hookUrl, String appId, String installationId, String eventType, JsonWriter payloadWriter)
+            throws Exception {
+        String deliveryId = "whd_" + UUID.randomUUID().toString().replace("-", "");
+        long ts = Instant.now().getEpochSecond();
+
+        ByteArrayOutputStream bodyOs = new ByteArrayOutputStream();
+        try (JsonGenerator gen = jsonFactory.createGenerator(bodyOs)) {
+            gen.writeStartObject();
+            gen.writeStringField("deliveryId", deliveryId);
+            gen.writeStringField("appId", appId);
+            gen.writeStringField("installationId", installationId);
+            gen.writeObjectFieldStart("event");
+            gen.writeStringField("id", "evt_" + UUID.randomUUID().toString().replace("-", ""));
+            gen.writeStringField("type", eventType);
+            gen.writeStringField("eventTime", Instant.now().toString());
+            gen.writeFieldName("payload");
+            payloadWriter.write(gen);
+            gen.writeEndObject();
+            gen.writeEndObject();
+        }
+        byte[] body = bodyOs.toByteArray();
+
+        MessageDigest md = MessageDigest.getInstance("SHA-256");
+        md.update((deliveryId + "." + ts + ".").getBytes(StandardCharsets.UTF_8));
+        md.update(body);
+        String digestHex = HexFormat.of().formatHex(md.digest());
+
+        Signature signer = Signature.getInstance("Ed25519");
+        signer.initSign(serverKeyPair.getPrivate());
+        signer.update(digestHex.getBytes(StandardCharsets.UTF_8));
+        String sig64 = Base64.getEncoder().encodeToString(signer.sign());
+
+        HttpClient client = HttpClient.newHttpClient();
+        HttpRequest req = HttpRequest.newBuilder(URI.create(hookUrl))
+                .header("Content-Type", "application/json")
+                .header("user-agent", "Cursor-Origin-Webhook/1.0")
+                .header("webhook-id", deliveryId)
+                .header("webhook-timestamp", String.valueOf(ts))
+                .header("webhook-signature", "v1ed," + sig64)
+                .header("webhook-event-type", eventType)
+                .POST(HttpRequest.BodyPublishers.ofByteArray(body))
+                .build();
+        HttpResponse<String> resp = client.send(req, HttpResponse.BodyHandlers.ofString());
+        if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+            throw new IOException("Webhook delivery failed: HTTP " + resp.statusCode() + " - " + resp.body());
+        }
+    }
 
     private void handleListInstallationRepos(HttpExchange he) throws IOException {
         sendJson(he, 200, gen -> {

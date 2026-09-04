@@ -16,7 +16,7 @@ from https://cursor.com[Cursor Origin] repositories.
 
 === Out of scope for now
 * Commit status notifications (dedicated API to be integrated later).
-* Webhooks.
+* Webhooks (basic implementation present; see <<_webhooks>>).
 * Tag discovery.
 * SSH checkout.
 * Rate limiting, caching, lazy iterables.
@@ -121,6 +121,58 @@ Standard: `+refs/heads/*:refs/remotes/origin/*`
 === Pull Requests
 No forks ⇒ no special PR refs needed. Use `+refs/heads/<headBranch>:refs/remotes/origin/<headBranch>`
 and pin to the head SHA from PR metadata.
+
+[[_webhooks]]
+== Webhooks
+
+=== Endpoint
+
+`OriginWebhookEndpoint` is an `UnprotectedRootAction` registered at `/cursor-origin-webhook/`.
+A `CrumbExclusion` exempts it from Jenkins CSRF protection so Origin can POST without a crumb.
+
+=== Signature Verification (`OriginWebhookVerifier`)
+
+Per the Origin API docs:
+
+1. Construct `lowercaseHex(SHA-256("<webhook-id>.<webhook-timestamp>.<raw-body>"))`.
+2. Verify the Ed25519 signature (from `v1ed,<base64>` in the `webhook-signature` header)
+   over the UTF-8 bytes of that hex digest against the active JWKS public keys fetched
+   from `GET /v1/origin/keys`.
+3. Reject timestamps more than 5 minutes from now.
+
+JWKS results are cached for 5 minutes to avoid per-request fetches.
+`OriginWebhookVerifier.clearCache()` is exposed for tests to force fresh JWKS fetches.
+
+=== Event Dispatch
+
+The endpoint delegates to all `OriginEventSubscriber` (extensible `ExtensionPoint`) instances,
+passing an `OriginWebhookEvent` carrying: event type, payload `JsonNode`, app/installation IDs,
+and timestamp.
+
+`OriginSCMEventSubscriber` is the built-in subscriber. It maps Origin event types to SCM API events:
+
+|===
+| Origin event | SCM API event
+
+| `repository.pushed` (per changed `refs/heads/*`) | `SCMHeadEvent` CREATED / UPDATED / REMOVED
+| `pull_request.created/reopened/published` | `SCMHeadEvent` CREATED
+| `pull_request.head_ref.pushed` | `SCMHeadEvent` UPDATED
+| `pull_request.closed/merged` | `SCMHeadEvent` REMOVED
+| `repository.created` | `SCMSourceEvent` CREATED
+| `repository.deleted` | `SCMSourceEvent` REMOVED
+|===
+
+Because the webhook is verified by signature before dispatch, the `heads()` method of each event
+returns the actual commit SHA from the payload — no back-channel API call needed.
+
+=== Testing
+
+`OriginWebhookVerifierTest` — pure unit tests (no Jenkins), verifying all signature failure modes
+(stale timestamp, wrong key, tampered body, missing headers, wrong signature format).
+
+`OriginWebhookEndpointTest` — end-to-end tests with `JenkinsRule` + `MockOriginServer`:
+the mock server serves a JWKS endpoint and uses its signing key to deliver signed webhooks
+to the JenkinsRule URL, then Awaitility assertions check job creation/removal.
 
 == Open Questions
 
