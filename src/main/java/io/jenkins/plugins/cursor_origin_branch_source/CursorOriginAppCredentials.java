@@ -24,11 +24,14 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.Date;
+import java.util.logging.Logger;
 import jenkins.security.SlaveToMasterCallable;
 import jenkins.util.JenkinsJVM;
 import org.kohsuke.stapler.DataBoundConstructor;
 
 public class CursorOriginAppCredentials extends BaseStandardCredentials implements StandardUsernamePasswordCredentials {
+
+    private static final Logger LOGGER = Logger.getLogger(CursorOriginAppCredentials.class.getName());
 
     /** Overridable in tests to point at a mock server. */
     static String API_BASE_URI = "https://api.cursor.com";
@@ -118,6 +121,9 @@ public class CursorOriginAppCredentials extends BaseStandardCredentials implemen
             InstallationAccessToken token = apiWithToken(jwt)
                     .originServiceCreateInstallationAccessToken(
                             installationId, new OriginServiceCreateInstallationAccessTokenRequest());
+            LOGGER.fine(() -> "Minted installation access token for app=" + appId
+                    + " installation=" + installationId
+                    + " expiresAt=" + token.getExpiresAt());
             return token.getToken();
         } catch (ApiException e) {
             throw new RuntimeException("Failed to mint Cursor Origin installation token", e);
