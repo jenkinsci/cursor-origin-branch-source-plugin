@@ -1,0 +1,7 @@
+<div>
+  Report only the final build status, skipping the queued, post-checkout and per-stage updates.
+  <p>
+    Each update is a write against the Cursor Origin API, so skipping them reduces the API budget a
+    build consumes at the cost of a less detailed check timeline.
+  </p>
+</div>

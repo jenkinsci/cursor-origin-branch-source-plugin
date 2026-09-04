@@ -13,10 +13,13 @@ from https://cursor.com[Cursor Origin] repositories.
 * `OriginSCMNavigator`: discover all repos in a team namespace matching a regex.
 * Polling-based trigger (no webhooks yet).
 * HTTPS git checkout using the same app installation token (Basic auth: `x-access-token` / token).
+* Reporting build status to Origin as a check run, via the Jenkins checks API.
 
 === Out of scope for now
-* Commit status notifications (dedicated API to be integrated later).
-* Webhooks.
+* Webhooks, including the `check_run` re-request event (so no "re-run" button).
+* Batch check-run upserts (`POST /check-runs:batchUpsert`), which would let a parallel pipeline
+  report up to ten stages for the cost of one write.
+* `deadlineAt` on a check run (Origin would then time the check out on its own).
 * Tag discovery.
 * SSH checkout.
 * Rate limiting, caching, lazy iterables.
@@ -113,6 +116,86 @@ See <<_open_questions>>.
   matches the head branch of an open PR, so each origin PR appears exactly once (as `PR-N`)
   rather than twice (branch + PR).
 
+`OriginChecksTrait`::
+  Configures how build status is reported as a check run: the check name, whether to skip
+  reporting, whether an unstable build is neutral rather than a failure, whether to include the
+  build log, whether to report progress as well as the final result, and whether to explain in the
+  build log why nothing could be published.
+  Checks are reported without the trait too; it only overrides the defaults.
+
+== Checks
+
+Build status is reported through the `checks-api` plugin rather than directly, so anything that
+publishes checks — the automatic build status check, the `publishChecks` and `withChecks` pipeline
+steps, warnings-ng — reaches Origin without knowing about it.
+
+=== Classes (package `checks`)
+
+`OriginChecksPublisherFactory extends ChecksPublisherFactory`::
+  `@Extension`. Claims a job when its SCM source is an `OriginSCMSource` with resolvable
+  credentials and a resolvable head SHA, and declines it otherwise; the checks API asks every
+  registered factory in turn and takes the first that claims the job.
+
+`OriginChecksContext`::
+  Resolves the repository, head SHA, credentials, build URL and the suite/check identities.
+  Created either from a `Run` (revision read from the build's `SCMRevisionAction`) or from a `Job`
+  while the build is still queued (revision fetched from the source, so this path costs one API
+  call).
+
+`OriginChecksDetails`::
+  Translates `ChecksDetails` into `CheckRunInput` / `CheckRunOutput` / `CheckRunAnnotationInput`,
+  enforcing the parts of the Origin contract that the checks API does not: a conclusion exactly
+  when the status is `completed`, a 255-character title, a 65535-byte summary and text, and a
+  column range only on a single-line annotation.
+
+`OriginChecksPublisher extends ChecksPublisher`::
+  `POST /check-runs`, then any new annotations. Never throws: a failure to report is logged to the
+  build log and the system log, since it must not fail the build being reported on.
+
+`OriginStatusChecksProperties extends AbstractStatusChecksProperties`::
+  `@Extension`. Without it the checks API publishes nothing automatically, so this is what turns
+  the queued / in-progress / per-stage / completed reports on, named from `OriginChecksTrait`.
+
+`OriginChecksAction extends InvisibleAction`::
+  Remembers, per check of a build, how many annotations Origin has already accepted.
+
+=== Identity and idempotency
+
+Origin upserts a check run on `(repository, head SHA, suite key, check key)`, so each publish is one
+self-contained request and there is no create-then-update distinction to track.
+
+`checkSuite.key`::
+  Full name of the multibranch project (the SCM source owner), falling back to the job's full name.
+  Required-check configuration is keyed on it, so it must not encode a branch or build number.
+
+`checkRun.key`::
+  The checks API check name, which is already stable across the lifecycle of one check.
+
+`externalId` (both suite and run)::
+  `Run.getExternalizableId()`, i.e. one attempt per Jenkins build. Reporting a new `externalId`
+  under the same key supersedes the previous attempt, which is what makes a rebuild replace the
+  earlier result rather than sit alongside it. The queued report has no build yet and uses the job's
+  full name, so it is superseded once the build starts.
+
+`externalUpdatedAt`::
+  Sent on every report, so that a stale retry cannot overwrite newer state.
+
+`name` (both suite and run)::
+  Display only; Origin never matches on it.
+
+Pull requests are reported against the head of the pull request branch, never a merge commit: a
+check on an ephemeral merge commit would not surface on the pull request.
+
+=== Annotations
+
+Annotations are a separate append-only sub-resource, addressed by the check-run id returned from the
+upsert, and the endpoint is explicitly not idempotent. The publisher therefore sends them in the
+batches of 25 that Origin accepts, stops at the 100-per-check-run cap (logging what it dropped), and
+records how many it has already sent on the run so that a repeated report of the same check does not
+duplicate them.
+
+Origin has no equivalent of the checks API's images or actions, so those are dropped.
+
 == Git Refspecs
 
 === Branches
@@ -154,6 +237,28 @@ that simulates the Origin REST API with real JWT-based authentication:
 . **`organizationFolderDiscoversTwoRepos`** — `OrganizationFolder` + `OriginSCMNavigator` scans two repos → two multibranch projects.
 . **`prHeadBranchExcludedFromBranchDiscovery`** — only branch is also PR head → PR appears, branch does not.
 . **`noJenkinsfileProducesNoJobs`** — repo without Jenkinsfile → `OriginSCMProbe` returns NONEXISTENT → no jobs.
+
+=== Checks tests
+
+The checks classes are unit tested with a mocked `OriginSCMFacade`, which is the seam that keeps the
+static Jenkins SCM and credentials lookups out of the way:
+
+. **`OriginChecksDetailsTest`** — status, conclusion, timestamp, URL, output and annotation mapping,
+  including the size limits and the contract violations that must be rejected.
+. **`OriginChecksContextTest`** — repository, head SHA (branch, pull request head, queued build),
+  suite and attempt identities, and each reason a job can be invalid.
+. **`OriginChecksPublisherFactoryTest`** — which jobs are claimed, and that declining one is silent
+  unless verbose logging was asked for.
+. **`OriginStatusChecksPropertiesTest`** — defaults and `OriginChecksTrait` overrides.
+
+`OriginChecksPublisherTest` asserts the requests actually put on the wire, using the real generated
+API client against a WireMock-stubbed Origin API: the upsert body for each status, stable keys across
+a check's lifecycle, annotation batching and capping, and that a rejected request is reported rather
+than thrown.
+
+`OriginChecksTraitITest` covers the Jenkins-side wiring with `@WithJenkins`: extension registration,
+trait availability on an Origin source, a configuration round trip, and that a non-Origin job is left
+to the other checks providers.
 
 `CursorOriginAppCredentialsLiveTest` is a manual live test (requires env vars `ORIGIN_APP_PRIVATE_KEY_PEM`,
 `ORIGIN_APP_ID`, `ORIGIN_APP_INSTALLATION_ID`) that mints a real token against the production
