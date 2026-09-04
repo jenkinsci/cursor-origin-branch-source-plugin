@@ -6,19 +6,21 @@ import hudson.Extension;
 import hudson.ExtensionList;
 import hudson.model.UnprotectedRootAction;
 import hudson.security.csrf.CrumbExclusion;
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import org.kohsuke.stapler.HttpResponse;
 import org.kohsuke.stapler.HttpResponses;
 import org.kohsuke.stapler.StaplerRequest2;
 import org.kohsuke.stapler.StaplerResponse2;
+import org.kohsuke.stapler.verb.POST;
 
 @Extension
 public class OriginWebhookEndpoint implements UnprotectedRootAction {
@@ -42,10 +44,8 @@ public class OriginWebhookEndpoint implements UnprotectedRootAction {
         return "cursor-origin-webhook";
     }
 
+    @POST
     public HttpResponse doIndex(StaplerRequest2 req, StaplerResponse2 rsp) throws IOException {
-        if (!"POST".equals(req.getMethod())) {
-            return HttpResponses.status(405);
-        }
         byte[] rawBody = req.getInputStream().readAllBytes();
 
         Map<String, String> headers = new HashMap<>();
@@ -88,11 +88,10 @@ public class OriginWebhookEndpoint implements UnprotectedRootAction {
         JsonNode payload = eventNode.path("payload");
         String appId = envelope.path("appId").asText("");
         String installationId = envelope.path("installationId").asText("");
-        long timestampMs = System.currentTimeMillis();
 
         LOGGER.fine(() -> "Dispatching webhook event: " + eventType);
         OriginWebhookEvent event =
-                new OriginWebhookEvent(eventType, payload, appId, installationId, timestampMs, ORIGIN);
+                new OriginWebhookEvent(eventType, payload, appId, installationId, Instant.now(), ORIGIN);
         for (OriginEventSubscriber subscriber : ExtensionList.lookup(OriginEventSubscriber.class)) {
             try {
                 subscriber.onEvent(event);

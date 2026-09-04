@@ -1,18 +1,17 @@
 package io.jenkins.plugins.cursor_origin_branch_source;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.jsonwebtoken.security.Jwk;
+import io.jsonwebtoken.security.JwkSet;
+import io.jsonwebtoken.security.Jwks;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.security.KeyFactory;
 import java.security.MessageDigest;
 import java.security.PublicKey;
 import java.security.Signature;
-import java.security.spec.X509EncodedKeySpec;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -27,11 +26,6 @@ class OriginWebhookVerifier {
 
     private static final Logger LOGGER = Logger.getLogger(OriginWebhookVerifier.class.getName());
     static final long CLOCK_SKEW_SECONDS = 300;
-
-    /** DER prefix for Ed25519 SubjectPublicKeyInfo (12 bytes preceding the 32-byte key). */
-    private static final byte[] ED25519_DER_PREFIX = {
-        0x30, 0x2A, 0x30, 0x05, 0x06, 0x03, 0x2B, 0x65, 0x70, 0x03, 0x21, 0x00
-    };
 
     private static final ConcurrentHashMap<String, CachedKeys> KEY_CACHE = new ConcurrentHashMap<>();
     private static final long CACHE_TTL_SECONDS = 300;
@@ -65,8 +59,8 @@ class OriginWebhookVerifier {
             return false;
         }
 
-        long now = Instant.now().getEpochSecond();
-        if (Math.abs(now - timestamp) > CLOCK_SKEW_SECONDS) {
+        Instant now = Instant.now();
+        if (Math.abs(now.getEpochSecond() - timestamp) > CLOCK_SKEW_SECONDS) {
             LOGGER.fine(() -> "Webhook timestamp out of range: " + timestamp + " vs now=" + now);
             return false;
         }
@@ -139,17 +133,6 @@ class OriginWebhookVerifier {
         KEY_CACHE.clear();
     }
 
-    static PublicKey parseEd25519Jwk(JsonNode jwk) throws Exception {
-        byte[] rawKey = Base64.getUrlDecoder().decode(jwk.path("x").asText());
-        if (rawKey.length != 32) {
-            throw new IllegalArgumentException("Expected 32-byte Ed25519 key, got " + rawKey.length);
-        }
-        byte[] der = new byte[ED25519_DER_PREFIX.length + rawKey.length];
-        System.arraycopy(ED25519_DER_PREFIX, 0, der, 0, ED25519_DER_PREFIX.length);
-        System.arraycopy(rawKey, 0, der, ED25519_DER_PREFIX.length, rawKey.length);
-        return KeyFactory.getInstance("Ed25519").generatePublic(new X509EncodedKeySpec(der));
-    }
-
     private static List<PublicKey> fetchJwksKeys(String uri) throws IOException {
         try {
             HttpClient client = HttpClient.newHttpClient();
@@ -158,16 +141,12 @@ class OriginWebhookVerifier {
             if (resp.statusCode() != 200) {
                 throw new IOException("JWKS fetch failed: HTTP " + resp.statusCode());
             }
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode root = mapper.readTree(resp.body());
+            JwkSet jwkSet = Jwks.setParser().build().parse(resp.body());
             List<PublicKey> keys = new ArrayList<>();
-            for (JsonNode jwk : root.path("keys")) {
-                if ("OKP".equals(jwk.path("kty").asText()) && "Ed25519".equals(jwk.path("crv").asText())) {
-                    try {
-                        keys.add(parseEd25519Jwk(jwk));
-                    } catch (Exception e) {
-                        LOGGER.log(Level.WARNING, "Failed to parse JWK entry", e);
-                    }
+            for (Jwk<?> jwk : jwkSet.getKeys()) {
+                Object key = jwk.toKey();
+                if (key instanceof PublicKey pk) {
+                    keys.add(pk);
                 }
             }
             return keys;

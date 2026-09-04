@@ -5,16 +5,12 @@ import hudson.ExtensionPoint;
 /**
  * Extension point for receiving verified Cursor Origin webhook events.
  *
- * <p>Implement this and annotate with {@link hudson.Extension} to receive
+ * <p>Implement this interface and annotate with {@link hudson.Extension} to receive
  * {@link OriginWebhookEvent}s dispatched by {@link OriginWebhookEndpoint}.
+ * Implementations must return quickly from {@link #onEvent}; defer expensive work to a
+ * background thread.
  */
-public abstract class OriginEventSubscriber implements ExtensionPoint {
+public interface OriginEventSubscriber extends ExtensionPoint {
 
-    /**
-     * Called for each verified webhook delivery on {@link OriginWebhookEndpoint}.
-     * Implementations must return quickly; defer expensive work to a background thread.
-     *
-     * @param event the verified webhook event
-     */
-    public abstract void onEvent(OriginWebhookEvent event);
+    void onEvent(OriginWebhookEvent event);
 }

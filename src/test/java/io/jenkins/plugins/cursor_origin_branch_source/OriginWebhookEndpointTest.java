@@ -44,9 +44,12 @@ class OriginWebhookEndpointTest extends MockOriginServerTestBase {
         assertThat(mb.getItem("main"), notNullValue());
 
         // Replace the repo with updated state (adds feature branch)
-        mockServer.replaceRepo(OWNER, "myrepo", "main")
-                .branch("main", "aaaa1111").file("Jenkinsfile", JENKINSFILE)
-                .branch("feature", "bbbb2222").file("Jenkinsfile", JENKINSFILE);
+        mockServer
+                .replaceRepo(OWNER, "myrepo", "main")
+                .branch("main", "aaaa1111")
+                .file("Jenkinsfile", JENKINSFILE)
+                .branch("feature", "bbbb2222")
+                .file("Jenkinsfile", JENKINSFILE);
 
         // Deliver push webhook for the new branch
         mockServer.deliverWebhook(webhookUrl, APP_ID, INSTALLATION_ID, "repository.pushed", gen -> {
@@ -75,9 +78,12 @@ class OriginWebhookEndpointTest extends MockOriginServerTestBase {
 
     @Test
     void pullRequestCreatedTriggersIndexing() throws Exception {
-        mockServer.addRepo(OWNER, "myrepo", "main")
-                .branch("main", "aaaa1111").file("Jenkinsfile", JENKINSFILE)
-                .branch("feature", "bbbb2222").file("Jenkinsfile", JENKINSFILE);
+        mockServer
+                .addRepo(OWNER, "myrepo", "main")
+                .branch("main", "aaaa1111")
+                .file("Jenkinsfile", JENKINSFILE)
+                .branch("feature", "bbbb2222")
+                .file("Jenkinsfile", JENKINSFILE);
 
         OrganizationFolder folder = createOrgFolder();
         r.waitUntilNoActivity();
@@ -88,9 +94,12 @@ class OriginWebhookEndpointTest extends MockOriginServerTestBase {
         assertThat(mb.getItem("PR-1"), nullValue());
 
         // Add PR to mock server
-        mockServer.replaceRepo(OWNER, "myrepo", "main")
-                .branch("main", "aaaa1111").file("Jenkinsfile", JENKINSFILE)
-                .branch("feature", "bbbb2222").file("Jenkinsfile", JENKINSFILE)
+        mockServer
+                .replaceRepo(OWNER, "myrepo", "main")
+                .branch("main", "aaaa1111")
+                .file("Jenkinsfile", JENKINSFILE)
+                .branch("feature", "bbbb2222")
+                .file("Jenkinsfile", JENKINSFILE)
                 .pr(1, "feature", "bbbb2222", "main", "aaaa1111");
 
         // Deliver pull_request.created webhook

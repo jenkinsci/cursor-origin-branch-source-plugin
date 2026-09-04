@@ -106,7 +106,8 @@ class OriginWebhookVerifierTest {
         KeyPairGenerator gen = KeyPairGenerator.getInstance("Ed25519");
         KeyPair decoyKey = gen.generateKeyPair();
         // fetcher returns decoy first, then the real key
-        assertTrue(OriginWebhookVerifier.verify(body, headers, () -> List.of(decoyKey.getPublic(), keyPair.getPublic())));
+        assertTrue(
+                OriginWebhookVerifier.verify(body, headers, () -> List.of(decoyKey.getPublic(), keyPair.getPublic())));
     }
 
     /** Signs a body the same way the mock server does and returns the required headers. */
@@ -121,9 +122,6 @@ class OriginWebhookVerifierTest {
         signer.update(digestHex.getBytes(StandardCharsets.UTF_8));
         String sig64 = Base64.getEncoder().encodeToString(signer.sign());
 
-        return Map.of(
-                "webhook-id", id,
-                "webhook-timestamp", String.valueOf(ts),
-                "webhook-signature", "v1ed," + sig64);
+        return Map.of("webhook-id", id, "webhook-timestamp", String.valueOf(ts), "webhook-signature", "v1ed," + sig64);
     }
 }

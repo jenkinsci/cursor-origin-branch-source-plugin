@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import hudson.Extension;
 import hudson.scm.SCM;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
@@ -21,25 +22,24 @@ import jenkins.scm.api.SCMSourceEvent;
  * multibranch project indexing and build triggering.
  */
 @Extension
-public class OriginSCMEventSubscriber extends OriginEventSubscriber {
+public class OriginSCMEventSubscriber implements OriginEventSubscriber {
 
     private static final Logger LOGGER = Logger.getLogger(OriginSCMEventSubscriber.class.getName());
 
     @Override
     public void onEvent(OriginWebhookEvent event) {
-        String eventType = event.getEventType();
-        JsonNode payload = event.getPayload();
-        long ts = event.getTimestampMs();
-        String origin = event.getOrigin();
+        String eventType = event.eventType();
+        JsonNode payload = event.payload();
+        long ts = event.timestamp().toEpochMilli();
+        String origin = event.origin();
 
         switch (eventType) {
             case "repository.pushed" -> handlePush(payload, ts, origin);
             case "pull_request.created", "pull_request.reopened", "pull_request.published" ->
-                    handlePullRequest(payload, SCMEvent.Type.CREATED, ts, origin);
+                handlePullRequest(payload, SCMEvent.Type.CREATED, ts, origin);
             case "pull_request.closed", "pull_request.merged" ->
-                    handlePullRequest(payload, SCMEvent.Type.REMOVED, ts, origin);
-            case "pull_request.head_ref.pushed" ->
-                    handlePullRequest(payload, SCMEvent.Type.UPDATED, ts, origin);
+                handlePullRequest(payload, SCMEvent.Type.REMOVED, ts, origin);
+            case "pull_request.head_ref.pushed" -> handlePullRequest(payload, SCMEvent.Type.UPDATED, ts, origin);
             case "repository.created" -> handleRepositoryEvent(payload, SCMEvent.Type.CREATED, ts, origin);
             case "repository.deleted" -> handleRepositoryEvent(payload, SCMEvent.Type.REMOVED, ts, origin);
             default -> LOGGER.fine(() -> "No SCM mapping for webhook event type: " + eventType);
@@ -223,7 +223,8 @@ public class OriginSCMEventSubscriber extends OriginEventSubscriber {
 
         @Override
         public String description() {
-            return "PR-" + prNumber + " " + getType().name().toLowerCase() + " in " + repoOwner + "/" + repoName;
+            return "PR-" + prNumber + " " + getType().name().toLowerCase(Locale.ROOT) + " in " + repoOwner + "/"
+                    + repoName;
         }
     }
 
@@ -257,7 +258,8 @@ public class OriginSCMEventSubscriber extends OriginEventSubscriber {
 
         @Override
         public String description() {
-            return "Repository " + repoOwner + "/" + repoName + " " + getType().name().toLowerCase();
+            return "Repository " + repoOwner + "/" + repoName + " "
+                    + getType().name().toLowerCase(Locale.ROOT);
         }
     }
 }
