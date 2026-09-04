@@ -217,6 +217,8 @@ class MockOriginServer implements Closeable {
                 handleListPulls(he, repo);
             } else if (rest.equals("/contents")) {
                 handleGetContents(he, repo);
+            } else if (rest.startsWith("/git/ref/")) {
+                handleGetGitRef(he, repo, rest.substring("/git/ref/".length()));
             } else {
                 sendError(he, 404, "unknown path: " + path);
             }
@@ -392,6 +394,28 @@ class MockOriginServer implements Closeable {
         } else {
             sendError(he, 404, "path not found: " + path);
         }
+    }
+
+    private void handleGetGitRef(HttpExchange he, MockRepo repo, String ref) throws IOException {
+        if (ref.startsWith("heads/")) {
+            String branchName = ref.substring("heads/".length());
+            for (MockBranch b : repo.branches) {
+                if (b.name.equals(branchName)) {
+                    final String sha = b.sha;
+                    sendJson(he, 200, gen -> {
+                        gen.writeStartObject();
+                        gen.writeStringField("ref", "refs/" + ref);
+                        gen.writeObjectFieldStart("object");
+                        gen.writeStringField("sha", sha);
+                        gen.writeStringField("type", "commit");
+                        gen.writeEndObject();
+                        gen.writeEndObject();
+                    });
+                    return;
+                }
+            }
+        }
+        sendError(he, 404, "ref not found: " + ref);
     }
 
     private static Map<String, String> findFilesForRef(MockRepo repo, String ref) {
