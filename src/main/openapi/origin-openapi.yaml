@@ -551,6 +551,119 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/origin/repos/{identifier.ownerSlug}/{identifier.name}/check-runs/{checkRunId}/annotations:
+        get:
+            tags:
+                - OriginService
+            description: |-
+                Lists a check run's annotations in ascending id order. Annotation ids are
+                 time-sortable TypeIDs. Uses opaque pagination with a default page size of
+                 30 and maximum of 100.
+            operationId: OriginService_ListCheckRunAnnotations
+            parameters:
+                - name: identifier.ownerSlug
+                  in: path
+                  description: Owning entity's unique slug.
+                  required: true
+                  schema:
+                    type: string
+                - name: identifier.name
+                  in: path
+                  description: Repo name, unique to the owner entity.
+                  required: true
+                  schema:
+                    type: string
+                - name: checkRunId
+                  in: path
+                  description: Server-assigned check-run id (`cr_…`).
+                  required: true
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: |-
+                    Max annotations to return. Defaults to 30 when unset or 0. Values above
+                     100 are clamped to 100.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  description: |-
+                    Opaque cursor from a previous response. A supplied token fixes the page
+                     size and scope, so `page_size` is ignored on follow-up requests.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListCheckRunAnnotationsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        post:
+            tags:
+                - OriginService
+            description: |-
+                Atomically appends 1-25 annotations when the run's durable total would
+                 remain at or below 100. The operation is not request-idempotent: retrying
+                 after an ambiguous transport failure may append duplicates and consume
+                 capacity. Identical content is intentionally allowed.
+            operationId: OriginService_CreateCheckRunAnnotations
+            parameters:
+                - name: identifier.ownerSlug
+                  in: path
+                  description: Owning entity's unique slug.
+                  required: true
+                  schema:
+                    type: string
+                - name: identifier.name
+                  in: path
+                  description: Repo name, unique to the owner entity.
+                  required: true
+                  schema:
+                    type: string
+                - name: checkRunId
+                  in: path
+                  description: Server-assigned check-run id (`cr_…`).
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            required:
+                                - annotations
+                            type: object
+                            properties:
+                                annotations:
+                                    type: array
+                                    items:
+                                        $ref: '#/components/schemas/CheckRunAnnotationInput'
+                                    description: |-
+                                        Atomic append batch. Must contain 1-25 entries. A check run stores at most
+                                         100 annotations.
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CreateCheckRunAnnotationsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/origin/repos/{identifier.ownerSlug}/{identifier.name}/check-runs:batchUpsert:
         post:
             tags:
@@ -3360,6 +3473,117 @@ components:
             description: |-
                 A persisted check run, as returned by `PostCheckRun`. All fields are
                  server-owned; the writable shape is `CheckRunInput`.
+        CheckRunAnnotation:
+            type: object
+            properties:
+                id:
+                    readOnly: true
+                    type: string
+                    description: Server-assigned unique ID of the annotation (`cra_…`).
+                checkRunId:
+                    readOnly: true
+                    type: string
+                    description: Check run the annotation belongs to.
+                annotationLevel:
+                    readOnly: true
+                    enum:
+                        - notice
+                        - warning
+                        - failure
+                    type: string
+                    format: enum
+                message:
+                    readOnly: true
+                    type: string
+                title:
+                    readOnly: true
+                    type: string
+                rawDetails:
+                    readOnly: true
+                    type: string
+                location:
+                    readOnly: true
+                    allOf:
+                        - $ref: '#/components/schemas/CheckRunAnnotationLocation'
+                    description: Absent for a run-level (non-inline) annotation.
+                createdAt:
+                    readOnly: true
+                    type: string
+                    format: date-time
+                updatedAt:
+                    readOnly: true
+                    type: string
+                    format: date-time
+            description: |-
+                A persisted check-run annotation. All fields are server-owned; the writable
+                 shape is `CheckRunAnnotationInput`.
+        CheckRunAnnotationColumnRange:
+            required:
+                - startColumn
+                - endColumn
+            type: object
+            properties:
+                startColumn:
+                    type: integer
+                    description: 1-based inclusive start column.
+                    format: int32
+                endColumn:
+                    type: integer
+                    description: 1-based inclusive end column; must be >= `startColumn`.
+                    format: int32
+            description: |-
+                Column range within a single line. Only valid when the location spans one
+                 line (`startLine == endLine`); both columns must be sent together.
+        CheckRunAnnotationInput:
+            required:
+                - annotationLevel
+                - message
+            type: object
+            properties:
+                annotationLevel:
+                    enum:
+                        - notice
+                        - warning
+                        - failure
+                    type: string
+                    format: enum
+                message:
+                    type: string
+                    description: 'Non-empty. Maximum UTF-8 size: 65535 bytes.'
+                title:
+                    type: string
+                    description: 'Maximum length: 255 Unicode characters.'
+                rawDetails:
+                    type: string
+                    description: 'Maximum UTF-8 size: 65535 bytes.'
+                location:
+                    allOf:
+                        - $ref: '#/components/schemas/CheckRunAnnotationLocation'
+                    description: Omit for a run-level (non-inline) annotation.
+            description: A single annotation to append to a check run.
+        CheckRunAnnotationLocation:
+            required:
+                - path
+                - startLine
+                - endLine
+            type: object
+            properties:
+                path:
+                    type: string
+                    description: 'Canonical, repository-relative path. Maximum UTF-8 size: 4096 bytes.'
+                startLine:
+                    type: integer
+                    description: 1-based inclusive start line.
+                    format: int32
+                endLine:
+                    type: integer
+                    description: 1-based inclusive end line; must be >= `startLine`.
+                    format: int32
+                columns:
+                    allOf:
+                        - $ref: '#/components/schemas/CheckRunAnnotationColumnRange'
+                    description: Only valid when `startLine == endLine`.
+            description: Source location an annotation points at.
         CheckRunInput:
             required:
                 - key
@@ -3718,6 +3942,15 @@ components:
                  For a file (`type` = "file"): `encoding` and `content` are populated
                  (base64). For a directory (`type` = "dir"): `entries` lists immediate
                  children.
+        CreateCheckRunAnnotationsResponse:
+            type: object
+            properties:
+                annotations:
+                    readOnly: true
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CheckRunAnnotation'
+                    description: Only the annotations created by this request.
         CreateInstallationAccessTokenRequest:
             required:
                 - installationId
@@ -4410,6 +4643,18 @@ components:
                     items:
                         $ref: '#/components/schemas/Branch'
                 nextPageToken:
+                    type: string
+                    description: Opaque cursor for the next page; empty when there are no more pages.
+        ListCheckRunAnnotationsResponse:
+            type: object
+            properties:
+                annotations:
+                    readOnly: true
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CheckRunAnnotation'
+                nextPageToken:
+                    readOnly: true
                     type: string
                     description: Opaque cursor for the next page; empty when there are no more pages.
         ListCheckRunsForCommitRequest:
