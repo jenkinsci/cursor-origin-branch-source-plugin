@@ -130,6 +130,66 @@ class OriginWebhookEndpointTest extends MockOriginServerTestBase {
     }
 
     @Test
+    void pullRequestClosedRemovesJob() throws Exception {
+        mockServer
+                .addRepo(OWNER, "myrepo", "main")
+                .branch("main", "aaaa1111")
+                .file("Jenkinsfile", JENKINSFILE)
+                .branch("feature", "bbbb2222")
+                .file("Jenkinsfile", JENKINSFILE)
+                .pr(1, "feature", "bbbb2222", "main", "aaaa1111");
+
+        OrganizationFolder folder = createOrgFolder();
+        r.waitUntilNoActivity();
+
+        WorkflowMultiBranchProject mb = (WorkflowMultiBranchProject) folder.getItem("myrepo");
+        assertNotNull(mb);
+        assertThat(mb.getItem("PR-1"), notNullValue());
+
+        // Remove PR from mock server
+        mockServer
+                .replaceRepo(OWNER, "myrepo", "main")
+                .branch("main", "aaaa1111")
+                .file("Jenkinsfile", JENKINSFILE)
+                .branch("feature", "bbbb2222")
+                .file("Jenkinsfile", JENKINSFILE);
+
+        // Deliver pull_request.closed webhook
+        mockServer.deliverWebhook(webhookUrl, APP_ID, INSTALLATION_ID, "pull_request.closed", gen -> {
+            gen.writeStartObject();
+            gen.writeObjectFieldStart("pullRequest");
+            gen.writeStringField("number", "1");
+            gen.writeObjectFieldStart("head");
+            gen.writeStringField("ref", "feature");
+            gen.writeStringField("sha", "bbbb2222");
+            gen.writeEndObject();
+            gen.writeObjectFieldStart("base");
+            gen.writeStringField("ref", "main");
+            gen.writeStringField("sha", "aaaa1111");
+            gen.writeEndObject();
+            gen.writeEndObject();
+            gen.writeObjectFieldStart("repository");
+            gen.writeObjectFieldStart("owner");
+            gen.writeStringField("slug", OWNER);
+            gen.writeEndObject();
+            gen.writeStringField("name", "myrepo");
+            gen.writeEndObject();
+            gen.writeEndObject();
+        });
+
+        // Phase 1: webhook marks the branch as Dead (dead branch projects are not buildable)
+        await().atMost(30, TimeUnit.SECONDS).until(() -> {
+            var pr1 = mb.getItem("PR-1");
+            return pr1 == null || !pr1.isBuildable();
+        });
+
+        // Phase 2: re-index causes the dead branch to be cleaned up
+        mb.scheduleBuild2(0).getFuture().get(60, TimeUnit.SECONDS);
+        r.waitUntilNoActivity();
+        assertThat(mb.getItem("PR-1"), nullValue());
+    }
+
+    @Test
     void invalidSignatureIsRejected() throws Exception {
         // POST a webhook with a tampered body (signature won't match)
         String originalBody = "{\"deliveryId\":\"whd_test\",\"event\":{\"type\":\"ping\",\"payload\":{}}}";

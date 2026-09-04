@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import hudson.Extension;
 import hudson.scm.SCM;
+import java.util.Collections;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -144,7 +145,7 @@ public class OriginSCMEventSubscriber implements OriginEventSubscriber {
             }
             SCMHead head = new SCMHead(branchName);
             if (sha == null || sha.isBlank()) {
-                return Map.of(head, null);
+                return Collections.singletonMap(head, null);
             }
             return Map.of(head, new AbstractGitSCMSource.SCMRevisionImpl(head, sha));
         }
@@ -211,7 +212,7 @@ public class OriginSCMEventSubscriber implements OriginEventSubscriber {
             }
             OriginPullRequestSCMHead head = new OriginPullRequestSCMHead(prNumber, headBranch, baseBranch);
             if (getType() == SCMEvent.Type.REMOVED) {
-                return Map.of(head, null);
+                return Collections.singletonMap(head, null);
             }
             return Map.of(head, new OriginPullRequestSCMRevision(head, headSha, baseSha));
         }
