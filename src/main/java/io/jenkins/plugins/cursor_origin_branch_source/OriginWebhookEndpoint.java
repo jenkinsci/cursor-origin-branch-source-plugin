@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import jenkins.scm.api.SCMEvent;
 import org.kohsuke.stapler.HttpResponse;
 import org.kohsuke.stapler.HttpResponses;
 import org.kohsuke.stapler.StaplerRequest2;
@@ -27,7 +28,6 @@ public class OriginWebhookEndpoint implements UnprotectedRootAction {
 
     private static final Logger LOGGER = Logger.getLogger(OriginWebhookEndpoint.class.getName());
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final String ORIGIN = "cursor-origin-webhook";
 
     @Override
     public String getIconFileName() {
@@ -59,7 +59,7 @@ public class OriginWebhookEndpoint implements UnprotectedRootAction {
         }
 
         try {
-            dispatchWebhook(rawBody);
+            dispatchWebhook(rawBody, req);
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "Error processing webhook payload", e);
             return HttpResponses.status(400);
@@ -81,7 +81,7 @@ public class OriginWebhookEndpoint implements UnprotectedRootAction {
         }
     }
 
-    private void dispatchWebhook(byte[] rawBody) throws IOException {
+    private void dispatchWebhook(byte[] rawBody, StaplerRequest2 req) throws IOException {
         JsonNode envelope = MAPPER.readTree(rawBody);
         JsonNode eventNode = envelope.path("event");
         String eventType = eventNode.path("type").asText("");
@@ -91,7 +91,7 @@ public class OriginWebhookEndpoint implements UnprotectedRootAction {
 
         LOGGER.fine(() -> "Dispatching webhook event: " + eventType);
         OriginWebhookEvent event =
-                new OriginWebhookEvent(eventType, payload, appId, installationId, Instant.now(), ORIGIN);
+                new OriginWebhookEvent(eventType, payload, appId, installationId, Instant.now(), SCMEvent.originOf(req));
         for (OriginEventSubscriber subscriber : ExtensionList.lookup(OriginEventSubscriber.class)) {
             try {
                 subscriber.onEvent(event);

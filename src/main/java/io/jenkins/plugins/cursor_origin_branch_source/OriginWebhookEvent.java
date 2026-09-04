@@ -1,6 +1,7 @@
 package io.jenkins.plugins.cursor_origin_branch_source;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import java.time.Instant;
 
@@ -12,7 +13,7 @@ import java.time.Instant;
  * @param appId          app ID from the delivery envelope
  * @param installationId installation ID from the delivery envelope
  * @param timestamp      time of receipt on this controller
- * @param origin         string identifying the source, e.g. {@code "cursor-origin-webhook"}
+ * @param origin         origin of the HTTP request, from {@link jenkins.scm.api.SCMEvent#originOf}
  */
 public record OriginWebhookEvent(
         @NonNull String eventType,
@@ -20,4 +21,4 @@ public record OriginWebhookEvent(
         @NonNull String appId,
         @NonNull String installationId,
         @NonNull Instant timestamp,
-        @NonNull String origin) {}
+        @CheckForNull String origin) {}
