@@ -90,8 +90,8 @@ public class OriginWebhookEndpoint implements UnprotectedRootAction {
         String installationId = envelope.path("installationId").asText("");
 
         LOGGER.fine(() -> "Dispatching webhook event: " + eventType);
-        OriginWebhookEvent event =
-                new OriginWebhookEvent(eventType, payload, appId, installationId, Instant.now(), SCMEvent.originOf(req));
+        OriginWebhookEvent event = new OriginWebhookEvent(
+                eventType, payload, appId, installationId, Instant.now(), SCMEvent.originOf(req));
         for (OriginEventSubscriber subscriber : ExtensionList.lookup(OriginEventSubscriber.class)) {
             try {
                 subscriber.onEvent(event);
