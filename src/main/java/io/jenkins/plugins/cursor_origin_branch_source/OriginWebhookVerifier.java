@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.PublicKey;
 import java.security.Signature;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -25,7 +26,7 @@ import java.util.logging.Logger;
 class OriginWebhookVerifier {
 
     private static final Logger LOGGER = Logger.getLogger(OriginWebhookVerifier.class.getName());
-    static final long CLOCK_SKEW_SECONDS = 300;
+    static final Duration CLOCK_SKEW = Duration.ofSeconds(300);
 
     private static final ConcurrentHashMap<String, CachedKeys> KEY_CACHE = new ConcurrentHashMap<>();
     private static final long CACHE_TTL_SECONDS = 300;
@@ -51,16 +52,16 @@ class OriginWebhookVerifier {
             return false;
         }
 
-        long timestamp;
+        Instant timestamp;
         try {
-            timestamp = Long.parseLong(timestampStr);
+            timestamp = Instant.ofEpochSecond(Long.parseLong(timestampStr));
         } catch (NumberFormatException e) {
             LOGGER.fine("Invalid webhook-timestamp: " + timestampStr);
             return false;
         }
 
         Instant now = Instant.now();
-        if (Math.abs(now.getEpochSecond() - timestamp) > CLOCK_SKEW_SECONDS) {
+        if (timestamp.isBefore(now.minus(CLOCK_SKEW)) || timestamp.isAfter(now.plus(CLOCK_SKEW))) {
             LOGGER.fine(() -> "Webhook timestamp out of range: " + timestamp + " vs now=" + now);
             return false;
         }
@@ -133,10 +134,17 @@ class OriginWebhookVerifier {
         KEY_CACHE.clear();
     }
 
+    private static final Duration JWKS_TIMEOUT = Duration.ofSeconds(10);
+
     private static List<PublicKey> fetchJwksKeys(String uri) throws IOException {
         try {
-            HttpClient client = HttpClient.newHttpClient();
-            HttpRequest req = HttpRequest.newBuilder(URI.create(uri)).GET().build();
+            HttpClient client = HttpClient.newBuilder()
+                    .connectTimeout(JWKS_TIMEOUT)
+                    .build();
+            HttpRequest req = HttpRequest.newBuilder(URI.create(uri))
+                    .timeout(JWKS_TIMEOUT)
+                    .GET()
+                    .build();
             HttpResponse<String> resp = client.send(req, HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() != 200) {
                 throw new IOException("JWKS fetch failed: HTTP " + resp.statusCode());
