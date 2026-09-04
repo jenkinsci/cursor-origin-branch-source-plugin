@@ -28,6 +28,8 @@ public class OriginWebhookEndpoint implements UnprotectedRootAction {
 
     private static final Logger LOGGER = Logger.getLogger(OriginWebhookEndpoint.class.getName());
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    // Reject payloads larger than 5 MB before running signature verification.
+    static final int MAX_PAYLOAD_BYTES = 5 * 1024 * 1024;
 
     @Override
     public String getIconFileName() {
@@ -47,7 +49,14 @@ public class OriginWebhookEndpoint implements UnprotectedRootAction {
     @SuppressWarnings("lgtm[jenkins/no-permission-check]")
     @POST
     public HttpResponse doIndex(StaplerRequest2 req, StaplerResponse2 rsp) throws IOException {
-        byte[] rawBody = req.getInputStream().readAllBytes();
+        long contentLength = req.getContentLengthLong();
+        if (contentLength > MAX_PAYLOAD_BYTES) {
+            return HttpResponses.status(413);
+        }
+        byte[] rawBody = req.getInputStream().readNBytes(MAX_PAYLOAD_BYTES + 1);
+        if (rawBody.length > MAX_PAYLOAD_BYTES) {
+            return HttpResponses.status(413);
+        }
 
         Map<String, String> headers = new HashMap<>();
         headers.put("webhook-id", req.getHeader("webhook-id"));

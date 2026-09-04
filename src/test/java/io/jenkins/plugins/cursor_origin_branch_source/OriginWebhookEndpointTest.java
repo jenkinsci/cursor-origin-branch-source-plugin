@@ -190,6 +190,24 @@ class OriginWebhookEndpointTest extends MockOriginServerTestBase {
     }
 
     @Test
+    void oversizedPayloadIsRejected() throws Exception {
+        // No need for a valid signature — the size check fires before verification
+        byte[] bigBody = new byte[OriginWebhookEndpoint.MAX_PAYLOAD_BYTES + 1];
+        HttpClient client = HttpClient.newHttpClient();
+        HttpRequest req = HttpRequest.newBuilder(URI.create(webhookUrl))
+                .header("Content-Type", "application/octet-stream")
+                .header("webhook-id", "whd_big")
+                .header(
+                        "webhook-timestamp",
+                        String.valueOf(java.time.Instant.now().getEpochSecond()))
+                .header("webhook-signature", "v1ed,AAAA")
+                .POST(HttpRequest.BodyPublishers.ofByteArray(bigBody))
+                .build();
+        HttpResponse<String> resp = client.send(req, HttpResponse.BodyHandlers.ofString());
+        assertThat("oversized payload must be rejected with 413", resp.statusCode(), is(413));
+    }
+
+    @Test
     void invalidSignatureIsRejected() throws Exception {
         // POST a webhook with a tampered body (signature won't match)
         String originalBody = "{\"deliveryId\":\"whd_test\",\"event\":{\"type\":\"ping\",\"payload\":{}}}";
