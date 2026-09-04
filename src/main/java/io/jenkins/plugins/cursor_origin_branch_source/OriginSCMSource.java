@@ -98,8 +98,12 @@ public class OriginSCMSource extends AbstractGitSCMSource {
     }
 
     private CursorOriginAppCredentials lookupCredentials() {
+        return lookupCredentials(getOwner());
+    }
+
+    private CursorOriginAppCredentials lookupCredentials(@CheckForNull Item context) {
         return CredentialsProvider.findCredentialByIdInItem(
-                credentialsId, CursorOriginAppCredentials.class, getOwner(), ACL.SYSTEM2, null);
+                credentialsId, CursorOriginAppCredentials.class, context, ACL.SYSTEM2, null);
     }
 
     @Override
@@ -180,7 +184,7 @@ public class OriginSCMSource extends AbstractGitSCMSource {
     @Override
     protected Set<String> retrieveRevisions(@NonNull TaskListener listener, @CheckForNull Item context)
             throws IOException, InterruptedException {
-        CursorOriginAppCredentials creds = lookupCredentials();
+        CursorOriginAppCredentials creds = lookupCredentials(context);
         if (creds == null) {
             throw new IOException("No credentials found with id: " + credentialsId);
         }
@@ -201,7 +205,7 @@ public class OriginSCMSource extends AbstractGitSCMSource {
     protected SCMRevision retrieve(
             @NonNull String thingName, @NonNull TaskListener listener, @CheckForNull Item context)
             throws IOException, InterruptedException {
-        CursorOriginAppCredentials creds = lookupCredentials();
+        CursorOriginAppCredentials creds = lookupCredentials(context);
         if (creds == null) {
             throw new IOException("No credentials found with id: " + credentialsId);
         }

@@ -11,7 +11,7 @@ import jenkins.plugins.git.AbstractGitSCMSource;
 import jenkins.scm.api.SCMRevision;
 import org.junit.jupiter.api.Test;
 
-/** Tests for {@link OriginSCMSource#retrieveRevisions} and {@link OriginSCMSource#retrieve(String, ...)}. */
+/** Tests for {@link OriginSCMSource} revision-fetch methods used by pipeline library retrieval. */
 class OriginSCMSourceRevisionTest extends MockOriginServerTestBase {
 
     @Test
