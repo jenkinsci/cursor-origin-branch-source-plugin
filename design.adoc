@@ -229,6 +229,8 @@ that simulates the Origin REST API with real JWT-based authentication:
 * `CursorOriginAppCredentials` signs a real JWT with the private key.
 * The mock server verifies the JWT against the registered public key before issuing an `oit_` access token.
 * All state (repos, branches, PRs, file presence) lives in memory, populated via a builder API.
+* Check runs reported by the plugin are recorded rather than pre-seeded, and can be inspected with
+  `checkRuns(owner, repo)` / `checkRun(owner, repo, checkKey)`.
 
 `OriginSCMNavigatorTest` exercises five scenarios with `@WithJenkins` / `JenkinsRule`:
 
@@ -251,14 +253,28 @@ static Jenkins SCM and credentials lookups out of the way:
   unless verbose logging was asked for.
 . **`OriginStatusChecksPropertiesTest`** — defaults and `OriginChecksTrait` overrides.
 
-`OriginChecksPublisherTest` asserts the requests actually put on the wire, using the real generated
-API client against a WireMock-stubbed Origin API: the upsert body for each status, stable keys across
-a check's lifecycle, annotation batching and capping, and that a rejected request is reported rather
-than thrown.
+`OriginChecksPublisherTest` runs the publisher against `MockOriginServer`, so the wire format, the
+token minting and the HTTP traffic are all real; only the SCM lookups are stubbed. It covers the
+upsert for each status, that one check's lifecycle updates a single check run, annotation content,
+batching and capping, and that a rejected request is reported rather than thrown.
 
-`OriginChecksTraitITest` covers the Jenkins-side wiring with `@WithJenkins`: extension registration,
-trait availability on an Origin source, a configuration round trip, and that a non-Origin job is left
-to the other checks providers.
+To make those assertions meaningful, `MockOriginServer` enforces the check-run contract rather than
+accepting anything: the required identity fields, a conclusion exactly when the status is
+`completed`, the 1-25 annotations per request and 100 per check run limits, and the
+`externalUpdatedAt` ordering that stops a stale report overwriting newer state. A publisher that got
+any of those wrong would fail the test rather than production. It also offers
+`rejectAnnotationsWith(status)` to exercise the error paths, and records every reported state of a
+check run so a test can assert the lifecycle.
+
+`OriginChecksITest` is the end-to-end test: a real multibranch build against `MockOriginServer` with
+nothing between the checks API and Origin stubbed out. It asserts that a branch build is reported as
+`completed`/`success` against the branch head with the build's URL and external id, that a pull
+request is reported against its head SHA, that the trait's check name is honoured, and that
+`skip` reports nothing at all.
+
+`OriginChecksTraitITest` covers the remaining Jenkins-side wiring: extension registration, trait
+availability on an Origin source, a configuration round trip, and that a non-Origin job is left to
+the other checks providers.
 
 `CursorOriginAppCredentialsLiveTest` is a manual live test (requires env vars `ORIGIN_APP_PRIVATE_KEY_PEM`,
 `ORIGIN_APP_ID`, `ORIGIN_APP_INSTALLATION_ID`) that mints a real token against the production
