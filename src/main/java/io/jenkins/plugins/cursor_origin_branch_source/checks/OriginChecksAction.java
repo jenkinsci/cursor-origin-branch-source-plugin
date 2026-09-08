@@ -12,6 +12,7 @@ import hudson.model.InvisibleAction;
  */
 class OriginChecksAction extends InvisibleAction {
 
+    @SuppressWarnings("lgtm[jenkins/plaintext-storage]")
     private final String checkKey;
     private final String checkRunId;
     private int publishedAnnotations;
@@ -21,7 +22,6 @@ class OriginChecksAction extends InvisibleAction {
         this.checkRunId = checkRunId;
     }
 
-    @SuppressWarnings("lgtm[jenkins/plaintext-storage]")
     @NonNull
     String getCheckKey() {
         return checkKey;
