@@ -18,6 +18,7 @@ import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model.Branc
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model.GitRef;
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model.ListBranchesResponse;
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model.ListPullRequestsResponse;
+import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model.OriginActor;
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model.PullRequest;
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model.Repo;
 import java.io.IOException;
@@ -39,6 +40,8 @@ import jenkins.scm.api.SCMRevision;
 import jenkins.scm.api.SCMSourceCriteria;
 import jenkins.scm.api.SCMSourceDescriptor;
 import jenkins.scm.api.SCMSourceEvent;
+import jenkins.scm.api.metadata.ContributorMetadataAction;
+import jenkins.scm.api.metadata.ObjectMetadataAction;
 import jenkins.scm.api.trait.SCMSourceTrait;
 import jenkins.scm.api.trait.SCMSourceTraitDescriptor;
 import org.jenkinsci.Symbol;
@@ -253,6 +256,38 @@ public class OriginSCMSource extends AbstractGitSCMSource {
             }
         } catch (ApiException e) {
             throw new IOException("Origin API error retrieving revision for " + head.getName(), e);
+        }
+    }
+
+    @NonNull
+    @Override
+    protected List<Action> retrieveActions(
+            @NonNull SCMHead head, @CheckForNull SCMHeadEvent event, @NonNull TaskListener listener)
+            throws IOException, InterruptedException {
+        if (!(head instanceof OriginPullRequestSCMHead prHead)) {
+            return Collections.emptyList();
+        }
+        OriginAppCredentials creds = lookupCredentials();
+        if (creds == null) {
+            return Collections.emptyList();
+        }
+        try {
+            OriginServiceApi api = OriginAppCredentials.apiWithToken(creds.mintToken());
+            PullRequest pr = api.originServiceGetPullRequest(repoOwner, repository, prHead.getNumber());
+            List<Action> actions = new ArrayList<>();
+            actions.add(new ObjectMetadataAction(pr.getTitle(), pr.getBody(), null));
+            OriginActor author = pr.getAuthor();
+            if (author != null && author.getUser() != null) {
+                String id = author.getUser().getId();
+                String email = author.getUser().getEmail();
+                actions.add(new ContributorMetadataAction(id, id, email));
+            }
+            return actions;
+        } catch (ApiException e) {
+            listener.getLogger()
+                    .println("Could not retrieve PR metadata for " + prHead.getName() + ": " + e.getMessage());
+            LOGGER.log(Level.WARNING, "Failed to retrieve PR metadata for " + repoOwner + "/" + repository, e);
+            return Collections.emptyList();
         }
     }
 
