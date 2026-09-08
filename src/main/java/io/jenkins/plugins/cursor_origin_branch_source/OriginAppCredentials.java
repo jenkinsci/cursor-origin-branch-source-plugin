@@ -29,9 +29,9 @@ import jenkins.security.SlaveToMasterCallable;
 import jenkins.util.JenkinsJVM;
 import org.kohsuke.stapler.DataBoundConstructor;
 
-public class CursorOriginAppCredentials extends BaseStandardCredentials implements StandardUsernamePasswordCredentials {
+public class OriginAppCredentials extends BaseStandardCredentials implements StandardUsernamePasswordCredentials {
 
-    private static final Logger LOGGER = Logger.getLogger(CursorOriginAppCredentials.class.getName());
+    private static final Logger LOGGER = Logger.getLogger(OriginAppCredentials.class.getName());
 
     /** Overridable in tests to point at a mock server. */
     static String API_BASE_URI = "https://api.cursor.com";
@@ -44,7 +44,7 @@ public class CursorOriginAppCredentials extends BaseStandardCredentials implemen
     private final Secret privateKey;
 
     @DataBoundConstructor
-    public CursorOriginAppCredentials(
+    public OriginAppCredentials(
             CredentialsScope scope,
             String id,
             String description,
@@ -82,7 +82,7 @@ public class CursorOriginAppCredentials extends BaseStandardCredentials implemen
     }
 
     @Override
-    public CursorOriginAppCredentials forRun(Run<?, ?> run) {
+    public OriginAppCredentials forRun(Run<?, ?> run) {
         // TODO: infer repository context from OriginSCMSource once that class exists
         return this;
     }
@@ -142,7 +142,7 @@ public class CursorOriginAppCredentials extends BaseStandardCredentials implemen
 
     private Object writeReplace() {
         if (Channel.current() != null) {
-            return new DelegatingCursorOriginAppCredentials(
+            return new DelegatingOriginAppCredentials(
                     getId(),
                     getDescription(),
                     new EncryptedObject<>(new TokenMintingData(appId, installationId, privateKey.getPlainText())));
@@ -153,7 +153,7 @@ public class CursorOriginAppCredentials extends BaseStandardCredentials implemen
     @SuppressWarnings("lgtm[jenkins/plaintext-storage]")
     private record TokenMintingData(String appId, String installationId, String privateKey) implements Serializable {}
 
-    private record DelegatingCursorOriginAppCredentials(
+    private record DelegatingOriginAppCredentials(
             String id, String description, EncryptedObject<TokenMintingData> trustedData)
             implements StandardUsernamePasswordCredentials, Serializable {
 
@@ -190,7 +190,7 @@ public class CursorOriginAppCredentials extends BaseStandardCredentials implemen
         public Secret getPassword() {
             Channel ch = Channel.current();
             if (ch == null) {
-                throw new IllegalStateException("DelegatingCursorOriginAppCredentials used on controller");
+                throw new IllegalStateException("DelegatingOriginAppCredentials used on controller");
             }
             try {
                 return Secret.fromString(ch.call(new MintToken(trustedData)));
@@ -225,15 +225,14 @@ public class CursorOriginAppCredentials extends BaseStandardCredentials implemen
      * installation token into a static credential, which would break subsequent token refreshes.
      */
     @Extension
-    public static class CursorOriginAppCredentialsSnapshotTaker
-            extends CredentialsSnapshotTaker<CursorOriginAppCredentials> {
+    public static class OriginAppCredentialsSnapshotTaker extends CredentialsSnapshotTaker<OriginAppCredentials> {
         @Override
-        public Class<CursorOriginAppCredentials> type() {
-            return CursorOriginAppCredentials.class;
+        public Class<OriginAppCredentials> type() {
+            return OriginAppCredentials.class;
         }
 
         @Override
-        public CursorOriginAppCredentials snapshot(CursorOriginAppCredentials credentials) {
+        public OriginAppCredentials snapshot(OriginAppCredentials credentials) {
             return credentials;
         }
     }

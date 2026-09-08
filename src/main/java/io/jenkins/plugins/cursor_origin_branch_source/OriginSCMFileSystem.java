@@ -86,12 +86,12 @@ class OriginSCMFileSystem extends SCMFileSystem {
             if (credentialsId == null) {
                 return null;
             }
-            CursorOriginAppCredentials creds = CredentialsProvider.findCredentialByIdInItem(
-                    credentialsId, CursorOriginAppCredentials.class, src.getOwner(), ACL.SYSTEM2, null);
+            OriginAppCredentials creds = CredentialsProvider.findCredentialByIdInItem(
+                    credentialsId, OriginAppCredentials.class, src.getOwner(), ACL.SYSTEM2, null);
             if (creds == null) {
                 return null;
             }
-            OriginServiceApi api = CursorOriginAppCredentials.apiWithToken(creds.mintToken());
+            OriginServiceApi api = OriginAppCredentials.apiWithToken(creds.mintToken());
 
             String ref;
             if (rev instanceof OriginPullRequestSCMRevision prRev) {

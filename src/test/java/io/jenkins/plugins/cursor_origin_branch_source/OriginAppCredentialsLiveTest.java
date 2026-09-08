@@ -45,7 +45,7 @@ import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
  *   CURSOR_ORIGIN_TEST_REPO_NAME  – name of that repo
  */
 @WithJenkins
-class CursorOriginAppCredentialsLiveTest {
+class OriginAppCredentialsLiveTest {
 
     private static final String appId = System.getenv("CURSOR_ORIGIN_APP_ID");
     private static final String pkFile = System.getenv("CURSOR_ORIGIN_APP_PK_FILE");
@@ -68,9 +68,9 @@ class CursorOriginAppCredentialsLiveTest {
      */
     @Test
     void appAuthCanReadRepoContents() throws Exception {
-        String token = CursorOriginAppCredentials.doMintToken(appId, installationId, Files.readString(Path.of(pkFile)));
+        String token = OriginAppCredentials.doMintToken(appId, installationId, Files.readString(Path.of(pkFile)));
 
-        OriginServiceApi api = CursorOriginAppCredentials.apiWithToken(token);
+        OriginServiceApi api = OriginAppCredentials.apiWithToken(token);
 
         Repo repo = api.originServiceGetRepo(ownerSlug, repoName);
         assertEquals(repoName, repo.getName(), "Repo name mismatch");
@@ -91,7 +91,7 @@ class CursorOriginAppCredentialsLiveTest {
      */
     @Test
     void agentSerialization(JenkinsRule r) throws Exception {
-        var creds = new CursorOriginAppCredentials(
+        var creds = new OriginAppCredentials(
                 CredentialsScope.GLOBAL,
                 "myapp",
                 null,
@@ -103,9 +103,8 @@ class CursorOriginAppCredentialsLiveTest {
         var ws = agent.getWorkspaceRoot();
         assertThat(ws, notNullValue());
         ws.mkdirs();
-        try (var recorder = new LogRecorder()
-                .record(CursorOriginAppCredentials.class, Level.FINE)
-                .capture(10)) {
+        try (var recorder =
+                new LogRecorder().record(OriginAppCredentials.class, Level.FINE).capture(10)) {
             ws.act(new UseCreds(
                     CredentialsProvider.snapshot(StandardUsernamePasswordCredentials.class, creds),
                     listener,
