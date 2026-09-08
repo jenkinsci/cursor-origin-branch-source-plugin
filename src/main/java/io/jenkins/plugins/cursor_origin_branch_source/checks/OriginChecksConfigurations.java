@@ -30,9 +30,6 @@ interface OriginChecksConfigurations {
     /** Whether to suppress the automatic build status check entirely. */
     boolean isSkip();
 
-    /** Whether to report only the final status, skipping the queued, checkout and stage updates. */
-    boolean isSkipProgressUpdates();
-
     /** Whether to explain in the build log why no checks could be published. */
     boolean isVerboseConsoleLog();
 
@@ -46,11 +43,6 @@ interface OriginChecksConfigurations {
 
         @Override
         public boolean isSkip() {
-            return false;
-        }
-
-        @Override
-        public boolean isSkipProgressUpdates() {
             return false;
         }
 

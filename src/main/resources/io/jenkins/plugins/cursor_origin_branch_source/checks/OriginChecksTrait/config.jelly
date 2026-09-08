@@ -6,9 +6,6 @@
   <f:entry title="${%Skip publishing checks}" field="skip">
     <f:checkbox/>
   </f:entry>
-  <f:entry title="${%Skip progress updates}" field="skipProgressUpdates">
-    <f:checkbox/>
-  </f:entry>
   <f:entry title="${%Verbose console log}" field="verboseConsoleLog">
     <f:checkbox/>
   </f:entry>

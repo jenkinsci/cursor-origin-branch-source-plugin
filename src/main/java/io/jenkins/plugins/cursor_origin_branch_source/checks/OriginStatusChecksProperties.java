@@ -38,11 +38,6 @@ public class OriginStatusChecksProperties extends AbstractStatusChecksProperties
         return getConfigurations(job).isSkip();
     }
 
-    @Override
-    public boolean isSkipProgressUpdates(final Job<?, ?> job) {
-        return getConfigurations(job).isSkipProgressUpdates();
-    }
-
     private OriginChecksConfigurations getConfigurations(final Job<?, ?> job) {
         return OriginChecksConfigurations.forJob(scmFacade, job);
     }

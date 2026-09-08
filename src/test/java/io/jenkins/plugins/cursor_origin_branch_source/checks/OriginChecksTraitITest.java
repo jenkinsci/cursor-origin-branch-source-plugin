@@ -54,7 +54,6 @@ class OriginChecksTraitITest {
         OriginChecksTrait trait = new OriginChecksTrait();
         trait.setName("continuous-integration/jenkins");
         trait.setSkip(true);
-        trait.setSkipProgressUpdates(true);
         trait.setVerboseConsoleLog(true);
         OriginSCMSource source = new OriginSCMSource("acme-corp", "widgets");
         source.setCredentialsId("origin-creds");
@@ -74,7 +73,6 @@ class OriginChecksTraitITest {
 
         assertThat(reloadedTrait.getName(), is("continuous-integration/jenkins"));
         assertThat(reloadedTrait.isSkip(), is(true));
-        assertThat(reloadedTrait.isSkipProgressUpdates(), is(true));
         assertThat(reloadedTrait.isVerboseConsoleLog(), is(true));
     }
 
