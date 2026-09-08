@@ -127,7 +127,9 @@ See <<_open_questions>>.
 
 Build status is reported through the `checks-api` plugin rather than directly, so anything that
 publishes checks — the automatic build status check, the `publishChecks` and `withChecks` pipeline
-steps, warnings-ng — reaches Origin without knowing about it.
+steps, the `junit` step's test report, warnings-ng — reaches Origin without knowing about it.
+Each of those is a check run of its own, keyed on the name its publisher chose (`Jenkins` for the
+build status, `Tests` for a test report), so they appear side by side under one check suite.
 
 === Classes (package `checks`)
 
@@ -276,6 +278,10 @@ check run so a test can assert the lifecycle.
 nothing between the checks API and Origin stubbed out. It asserts that a branch build is reported as
 `completed`/`success` against the branch head with the build's URL and external id, that a pull
 request is reported against its head SHA, and that `skip` reports nothing at all.
+It also covers what other plugins publish through the checks API: a `junit` step's test report
+arrives as its own check run keyed `Tests`, in the same suite as the build status check and carrying
+the failing test's detail, and the UNSTABLE build that the failing test causes is reported as
+`failure`.
 
 `OriginChecksTraitITest` covers the remaining Jenkins-side wiring: extension registration, trait
 availability on an Origin source, a configuration round trip, and that a non-Origin job is left to

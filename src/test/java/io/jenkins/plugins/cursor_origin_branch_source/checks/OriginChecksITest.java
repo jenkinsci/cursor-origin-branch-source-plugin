@@ -1,12 +1,14 @@
 package io.jenkins.plugins.cursor_origin_branch_source.checks;
 
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 
+import hudson.model.Result;
 import io.jenkins.plugins.cursor_origin_branch_source.BranchDiscoveryTrait;
 import io.jenkins.plugins.cursor_origin_branch_source.MockOriginServer;
 import io.jenkins.plugins.cursor_origin_branch_source.MockOriginServerTestBase;
@@ -27,6 +29,23 @@ class OriginChecksITest extends MockOriginServerTestBase {
     private static final String JENKINSFILE = "node { echo 'building' }";
     private static final String MAIN_SHA = "aaaa1111";
     private static final String FEATURE_SHA = "bbbb2222";
+
+    /** A report with one failure, one pass and one skip, for the junit step to archive. */
+    private static final String JUNIT_REPORT = """
+            <?xml version='1.0' encoding='UTF-8'?>
+            <testsuite name='com.acme.WidgetTest' tests='3' failures='1' skipped='1'>
+              <testcase classname='com.acme.WidgetTest' name='spins'/>
+              <testcase classname='com.acme.WidgetTest' name='wobbles'>
+                <failure message='expected spin but got wobble'>expected spin but got wobble</failure>
+              </testcase>
+              <testcase classname='com.acme.WidgetTest' name='ignored'><skipped/></testcase>
+            </testsuite>
+            """;
+
+    private static final String JUNIT_JENKINSFILE = "node {\n"
+            + "  writeFile file: 'results.xml', text: '''" + JUNIT_REPORT + "'''\n"
+            + "  junit 'results.xml'\n"
+            + "}\n";
 
     /** A successful build reports the whole lifecycle of one check against the branch head. */
     @Test
@@ -75,6 +94,52 @@ class OriginChecksITest extends MockOriginServerTestBase {
                         .map(MockOriginServer.MockCheckRun::getConclusion)
                         .toList(),
                 hasItem("success"));
+    }
+
+    /**
+     * Test reports are not this plugin's work: the junit plugin publishes them through the checks API,
+     * which routes them to our publisher. The point of this test is that such a check reaches Origin as
+     * its own check run in the same suite, carrying the failure detail the user would see on GitHub.
+     */
+    @Test
+    void reportsTestResultsAsTheirOwnCheckRun() throws Exception {
+        mockServer.addRepo(OWNER, "sprockets", "main").branch("main", MAIN_SHA).file("Jenkinsfile", JUNIT_JENKINSFILE);
+
+        WorkflowMultiBranchProject project = createProject("sprockets", new OriginChecksTrait());
+
+        assertThat(
+                mockServer.checkRuns(OWNER, "sprockets").stream()
+                        .map(MockOriginServer.MockCheckRun::getKey)
+                        .toList(),
+                containsInAnyOrder("Jenkins", "Tests"));
+
+        MockOriginServer.MockCheckRun tests = mockServer.checkRun(OWNER, "sprockets", "Tests");
+        assertThat(tests.getHeadSha(), is(MAIN_SHA));
+        assertThat(tests.getStatus(), is("completed"));
+        assertThat(tests.getConclusion(), is("failure"));
+        assertThat(tests.getOutputTitle(), is("com.acme.WidgetTest.wobbles failed"));
+        assertThat(tests.getOutputText(), containsString("com.acme.WidgetTest.wobbles"));
+        assertThat(tests.getOutputText(), containsString("expected spin but got wobble"));
+        assertThat(tests.getDetailsUrl(), containsString("tests"));
+        // Both checks belong to one suite, so Origin groups them under the same build.
+        assertThat(
+                tests.getSuiteKey(),
+                is(mockServer.checkRun(OWNER, "sprockets", "Jenkins").getSuiteKey()));
+        assertThat(tests.getSuiteKey(), is(project.getFullName()));
+    }
+
+    /**
+     * Failing tests only make the build UNSTABLE, and an unstable build is reported as a failure rather
+     * than as neutral, so a required check does not pass on a build with broken tests.
+     */
+    @Test
+    void reportsAnUnstableBuildAsAFailure() throws Exception {
+        mockServer.addRepo(OWNER, "flywheels", "main").branch("main", MAIN_SHA).file("Jenkinsfile", JUNIT_JENKINSFILE);
+
+        WorkflowMultiBranchProject project = createProject("flywheels", new OriginChecksTrait());
+
+        assertThat(project.getItem("main").getLastBuild().getResult(), is(Result.UNSTABLE));
+        assertThat(mockServer.checkRun(OWNER, "flywheels", "Jenkins").getConclusion(), is("failure"));
     }
 
     @Test
