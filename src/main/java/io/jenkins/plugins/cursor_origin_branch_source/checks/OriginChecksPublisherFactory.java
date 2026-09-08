@@ -50,7 +50,9 @@ public class OriginChecksPublisherFactory extends ChecksPublisherFactory {
         if (context.isValid(causeLogger)) {
             return Optional.of(new OriginChecksPublisher(context, consoleLogger));
         }
-        if (OriginChecksConfigurations.forJob(scmFacade, job).isVerboseConsoleLog()) {
+        // Declining a job that is not Origin backed is the contract, so there is nothing to explain; for
+        // a job that is, always say why its checks could not be published.
+        if (scmFacade.findOriginSCMSource(job).isPresent()) {
             consoleLogger.logEachLine(causeLogger.getErrorMessages());
         }
         return Optional.empty();

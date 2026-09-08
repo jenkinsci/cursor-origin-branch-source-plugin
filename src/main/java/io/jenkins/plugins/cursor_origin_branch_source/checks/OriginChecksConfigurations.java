@@ -30,9 +30,6 @@ interface OriginChecksConfigurations {
     /** Whether to suppress the automatic build status check entirely. */
     boolean isSkip();
 
-    /** Whether to explain in the build log why no checks could be published. */
-    boolean isVerboseConsoleLog();
-
     /** The settings that apply when the SCM source has no {@link OriginChecksTrait}. */
     class DefaultOriginChecksConfigurations implements OriginChecksConfigurations {
 
@@ -43,11 +40,6 @@ interface OriginChecksConfigurations {
 
         @Override
         public boolean isSkip() {
-            return false;
-        }
-
-        @Override
-        public boolean isVerboseConsoleLog() {
             return false;
         }
     }

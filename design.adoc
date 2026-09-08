@@ -117,8 +117,8 @@ See <<_open_questions>>.
   rather than twice (branch + PR).
 
 `OriginChecksTrait`::
-  Configures how build status is reported as a check run: the check name, whether to skip
-  reporting, and whether to explain in the build log why nothing could be published.
+  Configures how build status is reported as a check run: the check name, and whether to skip
+  reporting.
   An unstable build is always reported as a failure, the build log is always included in the check
   output, and progress is always reported as well as the final result.
   Checks are reported without the trait too; it only overrides the defaults.
@@ -135,6 +135,9 @@ steps, warnings-ng — reaches Origin without knowing about it.
   `@Extension`. Claims a job when its SCM source is an `OriginSCMSource` with resolvable
   credentials and a resolvable head SHA, and declines it otherwise; the checks API asks every
   registered factory in turn and takes the first that claims the job.
+  When it declines a job that *is* Origin backed it writes the reasons to the build log, since that
+  is a misconfiguration the user wants to see. Declining a job that is not Origin backed is the
+  contract rather than a problem, so those stay silent and unrelated builds get no output.
 
 `OriginChecksContext`::
   Resolves the repository, head SHA, credentials, build URL and the suite/check identities.

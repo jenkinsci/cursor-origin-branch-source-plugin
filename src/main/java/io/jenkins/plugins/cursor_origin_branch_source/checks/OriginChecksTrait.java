@@ -24,7 +24,6 @@ public class OriginChecksTrait extends SCMSourceTrait implements OriginChecksCon
 
     private String name = "Jenkins";
     private boolean skip;
-    private boolean verboseConsoleLog;
 
     @DataBoundConstructor
     public OriginChecksTrait() {}
@@ -47,16 +46,6 @@ public class OriginChecksTrait extends SCMSourceTrait implements OriginChecksCon
     @DataBoundSetter
     public void setSkip(boolean skip) {
         this.skip = skip;
-    }
-
-    @Override
-    public boolean isVerboseConsoleLog() {
-        return verboseConsoleLog;
-    }
-
-    @DataBoundSetter
-    public void setVerboseConsoleLog(boolean verboseConsoleLog) {
-        this.verboseConsoleLog = verboseConsoleLog;
     }
 
     @Extension

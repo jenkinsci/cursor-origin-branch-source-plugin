@@ -19,7 +19,6 @@ import io.jenkins.plugins.cursor_origin_branch_source.CursorOriginAppCredentials
 import io.jenkins.plugins.cursor_origin_branch_source.OriginSCMSource;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 import java.util.Optional;
 import jenkins.plugins.git.AbstractGitSCMSource;
 import jenkins.scm.api.SCMHead;
@@ -88,11 +87,13 @@ class OriginChecksPublisherFactoryTest {
         assertThat(createFactory(facade).createPublisher(run, listener()), is(Optional.empty()));
     }
 
+    /** Declining a job that is not Origin backed is normal, so it is not worth a word in its log. */
     @Test
-    void staysQuietAboutJobsItDeclines() {
+    void staysQuietAboutJobsThatAreNotOriginBacked() {
         Job job = mockJob();
         Run run = mockRun(job);
-        OriginSCMFacade facade = mockFacade(job, createSource());
+        OriginSCMFacade facade = mock(OriginSCMFacade.class);
+        when(facade.findOriginSCMSource(job)).thenReturn(Optional.empty());
 
         createFactory(facade).createPublisher(run, listener());
 
@@ -100,14 +101,10 @@ class OriginChecksPublisherFactoryTest {
     }
 
     @Test
-    void explainsWhyItDeclinedWhenAskedToBeVerbose() {
+    void explainsWhyItDeclinedAnOriginBackedJob() {
         Job job = mockJob();
         Run run = mockRun(job);
-        OriginSCMSource source = createSource();
-        OriginChecksTrait trait = new OriginChecksTrait();
-        trait.setVerboseConsoleLog(true);
-        source.setTraits(List.of(trait));
-        OriginSCMFacade facade = mockFacade(job, source);
+        OriginSCMFacade facade = mockFacade(job, createSource());
 
         createFactory(facade).createPublisher(run, listener());
 
@@ -118,11 +115,7 @@ class OriginChecksPublisherFactoryTest {
     void reportsCredentialProblemsRatherThanTheAbsenceOfASource() {
         Job job = mockJob();
         Run run = mockRun(job);
-        OriginSCMSource source = createSource();
-        OriginChecksTrait trait = new OriginChecksTrait();
-        trait.setVerboseConsoleLog(true);
-        source.setTraits(List.of(trait));
-        OriginSCMFacade facade = mockFacade(job, source);
+        OriginSCMFacade facade = mockFacade(job, createSource());
 
         createFactory(facade).createPublisher(run, listener());
 
