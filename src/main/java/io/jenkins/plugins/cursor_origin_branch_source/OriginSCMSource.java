@@ -34,6 +34,7 @@ import jenkins.plugins.git.AbstractGitSCMSource;
 import jenkins.plugins.git.GitRemoteHeadRefAction;
 import jenkins.plugins.git.GitSCMBuilder;
 import jenkins.scm.api.SCMHead;
+import jenkins.scm.api.SCMHeadCategory;
 import jenkins.scm.api.SCMHeadEvent;
 import jenkins.scm.api.SCMHeadObserver;
 import jenkins.scm.api.SCMRevision;
@@ -44,6 +45,8 @@ import jenkins.scm.api.metadata.ContributorMetadataAction;
 import jenkins.scm.api.metadata.ObjectMetadataAction;
 import jenkins.scm.api.trait.SCMSourceTrait;
 import jenkins.scm.api.trait.SCMSourceTraitDescriptor;
+import jenkins.scm.impl.ChangeRequestSCMHeadCategory;
+import jenkins.scm.impl.UncategorizedSCMHeadCategory;
 import org.jenkinsci.Symbol;
 import org.kohsuke.stapler.AncestorInPath;
 import org.kohsuke.stapler.DataBoundConstructor;
@@ -332,6 +335,14 @@ public class OriginSCMSource extends AbstractGitSCMSource {
         @Override
         public String getDisplayName() {
             return "Cursor Origin";
+        }
+
+        @Override
+        protected SCMHeadCategory[] createCategories() {
+            return new SCMHeadCategory[] {
+                new UncategorizedSCMHeadCategory(Messages._OriginSCMSource_BranchesCategory()),
+                new ChangeRequestSCMHeadCategory(Messages._OriginSCMSource_PullRequestsCategory()),
+            };
         }
 
         public List<SCMSourceTraitDescriptor> getTraitDescriptors() {
