@@ -53,10 +53,10 @@ abstract class MockOriginServerTestBase {
         mockServer.registerApp(APP_ID, appKeyPair.getPublic());
         String mockUrl = mockServer.start();
 
-        savedBaseUri = CursorOriginAppCredentials.API_BASE_URI;
-        CursorOriginAppCredentials.API_BASE_URI = mockUrl;
+        savedBaseUri = OriginAppCredentials.API_BASE_URI;
+        OriginAppCredentials.API_BASE_URI = mockUrl;
 
-        CursorOriginAppCredentials creds = new CursorOriginAppCredentials(
+        OriginAppCredentials creds = new OriginAppCredentials(
                 CredentialsScope.GLOBAL,
                 CREDS_ID,
                 "Test app credentials",
@@ -72,7 +72,7 @@ abstract class MockOriginServerTestBase {
 
     @AfterEach
     void tearDown() {
-        CursorOriginAppCredentials.API_BASE_URI = savedBaseUri;
+        OriginAppCredentials.API_BASE_URI = savedBaseUri;
     }
 
     static void showIndexing(ComputedFolder<?> folder) throws Exception {

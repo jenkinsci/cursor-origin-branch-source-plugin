@@ -119,7 +119,7 @@ class OriginWebhookVerifier {
 
     static JwksFetcher cachedLiveFetcher() {
         return () -> {
-            String uri = CursorOriginAppCredentials.API_BASE_URI + "/v1/origin/keys";
+            String uri = OriginAppCredentials.API_BASE_URI + "/v1/origin/keys";
             CachedKeys cached = KEY_CACHE.get(uri);
             if (cached != null && !cached.isExpired()) {
                 return cached.keys();
