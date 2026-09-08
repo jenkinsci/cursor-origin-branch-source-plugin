@@ -13,6 +13,13 @@ import io.jenkins.plugins.checks.status.AbstractStatusChecksProperties;
 @Extension
 public class OriginStatusChecksProperties extends AbstractStatusChecksProperties {
 
+    /**
+     * Name of the check that reports the overall build status. Origin matches required checks on it, so
+     * it is fixed rather than configurable: changing it would silently break the required-check
+     * configuration of every repository already reporting under the old name.
+     */
+    static final String CHECK_NAME = "Jenkins";
+
     private final OriginSCMFacade scmFacade;
 
     public OriginStatusChecksProperties() {
@@ -30,7 +37,7 @@ public class OriginStatusChecksProperties extends AbstractStatusChecksProperties
 
     @Override
     public String getName(final Job<?, ?> job) {
-        return getConfigurations(job).getName();
+        return CHECK_NAME;
     }
 
     @Override

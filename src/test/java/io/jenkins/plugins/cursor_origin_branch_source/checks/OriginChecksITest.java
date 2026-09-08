@@ -78,21 +78,6 @@ class OriginChecksITest extends MockOriginServerTestBase {
     }
 
     @Test
-    void reportsTheBuildUnderTheConfiguredCheckName() throws Exception {
-        mockServer.addRepo(OWNER, "sprockets", "main").branch("main", MAIN_SHA).file("Jenkinsfile", JENKINSFILE);
-        OriginChecksTrait trait = new OriginChecksTrait();
-        trait.setName("continuous-integration/jenkins");
-
-        createProject("sprockets", trait);
-
-        assertThat(
-                mockServer
-                        .checkRun(OWNER, "sprockets", "continuous-integration/jenkins")
-                        .getConclusion(),
-                is("success"));
-    }
-
-    @Test
     void reportsNothingWhenCheckReportingIsSkipped() throws Exception {
         mockServer.addRepo(OWNER, "cogs", "main").branch("main", MAIN_SHA).file("Jenkinsfile", JENKINSFILE);
         OriginChecksTrait trait = new OriginChecksTrait();

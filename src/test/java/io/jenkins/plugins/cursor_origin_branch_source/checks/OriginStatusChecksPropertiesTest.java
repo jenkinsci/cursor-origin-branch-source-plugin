@@ -37,20 +37,19 @@ class OriginStatusChecksPropertiesTest {
         OriginSCMSource source = new OriginSCMSource("acme-corp", "widgets");
         source.setTraits(List.of(new BranchDiscoveryTrait()));
 
-        assertThat(createProperties(source).getName(job), is("Jenkins"));
+        assertThat(createProperties(source).isSkipped(job), is(false));
     }
 
     @Test
     void takesItsSettingsFromTheChecksTrait() {
         OriginChecksTrait trait = new OriginChecksTrait();
-        trait.setName("continuous-integration/jenkins");
         trait.setSkip(true);
         OriginSCMSource source = new OriginSCMSource("acme-corp", "widgets");
         source.setTraits(List.of(new BranchDiscoveryTrait(), trait));
 
         OriginStatusChecksProperties properties = createProperties(source);
 
-        assertThat(properties.getName(job), is("continuous-integration/jenkins"));
+        assertThat(properties.getName(job), is("Jenkins"));
         assertThat(properties.isSkipped(job), is(true));
     }
 

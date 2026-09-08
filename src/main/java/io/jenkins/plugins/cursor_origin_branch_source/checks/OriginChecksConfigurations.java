@@ -24,19 +24,11 @@ interface OriginChecksConfigurations {
                 .orElseGet(DefaultOriginChecksConfigurations::new);
     }
 
-    /** Name of the check that reports the overall build status. */
-    String getName();
-
     /** Whether to suppress the automatic build status check entirely. */
     boolean isSkip();
 
     /** The settings that apply when the SCM source has no {@link OriginChecksTrait}. */
     class DefaultOriginChecksConfigurations implements OriginChecksConfigurations {
-
-        @Override
-        public String getName() {
-            return "Jenkins";
-        }
 
         @Override
         public boolean isSkip() {

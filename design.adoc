@@ -117,10 +117,10 @@ See <<_open_questions>>.
   rather than twice (branch + PR).
 
 `OriginChecksTrait`::
-  Configures how build status is reported as a check run: the check name, and whether to skip
-  reporting.
-  An unstable build is always reported as a failure, the build log is always included in the check
-  output, and progress is always reported as well as the final result.
+  Configures how build status is reported as a check run: currently only whether to skip reporting.
+  The automatic build status check is always named `Jenkins`, an unstable build is always reported
+  as a failure, the build log is always included in the check output, and progress is always
+  reported as well as the final result.
   Checks are reported without the trait too; it only overrides the defaults.
 
 == Checks
@@ -157,7 +157,9 @@ steps, warnings-ng — reaches Origin without knowing about it.
 
 `OriginStatusChecksProperties extends AbstractStatusChecksProperties`::
   `@Extension`. Without it the checks API publishes nothing automatically, so this is what turns
-  the queued / in-progress / per-stage / completed reports on, named from `OriginChecksTrait`.
+  the queued / in-progress / per-stage / completed reports on. The name it reports under is the
+  fixed `CHECK_NAME`; Origin matches required checks on it, so making it configurable would let a
+  rename silently break the required-check configuration of a repository already reporting.
 
 `OriginChecksAction extends InvisibleAction`::
   Remembers, per check of a build, how many annotations Origin has already accepted.
@@ -254,7 +256,8 @@ static Jenkins SCM and credentials lookups out of the way:
   suite and attempt identities, and each reason a job can be invalid.
 . **`OriginChecksPublisherFactoryTest`** — which jobs are claimed, and that declining one is silent
   unless verbose logging was asked for.
-. **`OriginStatusChecksPropertiesTest`** — defaults and `OriginChecksTrait` overrides.
+. **`OriginStatusChecksPropertiesTest`** — the fixed check name, and the `skip` override from
+  `OriginChecksTrait`.
 
 `OriginChecksPublisherTest` runs the publisher against `MockOriginServer`, so the wire format, the
 token minting and the HTTP traffic are all real; only the SCM lookups are stubbed. It covers the
@@ -272,8 +275,7 @@ check run so a test can assert the lifecycle.
 `OriginChecksITest` is the end-to-end test: a real multibranch build against `MockOriginServer` with
 nothing between the checks API and Origin stubbed out. It asserts that a branch build is reported as
 `completed`/`success` against the branch head with the build's URL and external id, that a pull
-request is reported against its head SHA, that the trait's check name is honoured, and that
-`skip` reports nothing at all.
+request is reported against its head SHA, and that `skip` reports nothing at all.
 
 `OriginChecksTraitITest` covers the remaining Jenkins-side wiring: extension registration, trait
 availability on an Origin source, a configuration round trip, and that a non-Origin job is left to

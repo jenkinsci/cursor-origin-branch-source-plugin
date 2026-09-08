@@ -8,7 +8,6 @@ import static org.hamcrest.Matchers.is;
 
 import hudson.ExtensionList;
 import hudson.model.FreeStyleProject;
-import hudson.util.FormValidation;
 import io.jenkins.plugins.checks.api.ChecksPublisher;
 import io.jenkins.plugins.checks.api.ChecksPublisherFactory;
 import io.jenkins.plugins.checks.status.AbstractStatusChecksProperties;
@@ -52,7 +51,6 @@ class OriginChecksTraitITest {
     void survivesAConfigurationRoundTrip(JenkinsRule r) throws Exception {
         WorkflowMultiBranchProject project = r.jenkins.createProject(WorkflowMultiBranchProject.class, "widgets");
         OriginChecksTrait trait = new OriginChecksTrait();
-        trait.setName("continuous-integration/jenkins");
         trait.setSkip(true);
         OriginSCMSource source = new OriginSCMSource("acme-corp", "widgets");
         source.setCredentialsId("origin-creds");
@@ -70,17 +68,7 @@ class OriginChecksTraitITest {
                 .findFirst()
                 .orElseThrow();
 
-        assertThat(reloadedTrait.getName(), is("continuous-integration/jenkins"));
         assertThat(reloadedTrait.isSkip(), is(true));
-    }
-
-    @Test
-    void rejectsABlankCheckName(JenkinsRule r) {
-        OriginChecksTrait.DescriptorImpl descriptor =
-                ExtensionList.lookupSingleton(OriginChecksTrait.DescriptorImpl.class);
-
-        assertThat(descriptor.doCheckName("Jenkins").kind, is(FormValidation.Kind.OK));
-        assertThat(descriptor.doCheckName(" ").kind, is(FormValidation.Kind.ERROR));
     }
 
     /**
