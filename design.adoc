@@ -118,9 +118,9 @@ See <<_open_questions>>.
 
 `OriginChecksTrait`::
   Configures how build status is reported as a check run: the check name, whether to skip
-  reporting, whether an unstable build is neutral rather than a failure, whether to include the
-  build log, whether to report progress as well as the final result, and whether to explain in the
-  build log why nothing could be published.
+  reporting, whether to include the build log, whether to report progress as well as the final
+  result, and whether to explain in the build log why nothing could be published.
+  An unstable build is always reported as a failure.
   Checks are reported without the trait too; it only overrides the defaults.
 
 == Checks

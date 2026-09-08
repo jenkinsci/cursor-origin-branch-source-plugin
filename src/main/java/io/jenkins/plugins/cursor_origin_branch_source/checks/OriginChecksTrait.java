@@ -24,7 +24,6 @@ public class OriginChecksTrait extends SCMSourceTrait implements OriginChecksCon
 
     private String name = "Jenkins";
     private boolean skip;
-    private boolean unstableBuildNeutral;
     private boolean suppressLogs;
     private boolean skipProgressUpdates;
     private boolean verboseConsoleLog;
@@ -50,16 +49,6 @@ public class OriginChecksTrait extends SCMSourceTrait implements OriginChecksCon
     @DataBoundSetter
     public void setSkip(boolean skip) {
         this.skip = skip;
-    }
-
-    @Override
-    public boolean isUnstableBuildNeutral() {
-        return unstableBuildNeutral;
-    }
-
-    @DataBoundSetter
-    public void setUnstableBuildNeutral(boolean unstableBuildNeutral) {
-        this.unstableBuildNeutral = unstableBuildNeutral;
     }
 
     @Override

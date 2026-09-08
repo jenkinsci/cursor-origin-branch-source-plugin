@@ -39,11 +39,6 @@ public class OriginStatusChecksProperties extends AbstractStatusChecksProperties
     }
 
     @Override
-    public boolean isUnstableBuildNeutral(final Job<?, ?> job) {
-        return getConfigurations(job).isUnstableBuildNeutral();
-    }
-
-    @Override
     public boolean isSuppressLogs(final Job<?, ?> job) {
         return getConfigurations(job).isSuppressLogs();
     }

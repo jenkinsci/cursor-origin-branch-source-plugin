@@ -54,7 +54,6 @@ class OriginChecksTraitITest {
         OriginChecksTrait trait = new OriginChecksTrait();
         trait.setName("continuous-integration/jenkins");
         trait.setSkip(true);
-        trait.setUnstableBuildNeutral(true);
         trait.setSuppressLogs(true);
         trait.setSkipProgressUpdates(true);
         trait.setVerboseConsoleLog(true);
@@ -76,7 +75,6 @@ class OriginChecksTraitITest {
 
         assertThat(reloadedTrait.getName(), is("continuous-integration/jenkins"));
         assertThat(reloadedTrait.isSkip(), is(true));
-        assertThat(reloadedTrait.isUnstableBuildNeutral(), is(true));
         assertThat(reloadedTrait.isSuppressLogs(), is(true));
         assertThat(reloadedTrait.isSkipProgressUpdates(), is(true));
         assertThat(reloadedTrait.isVerboseConsoleLog(), is(true));
