@@ -21,6 +21,7 @@ class OriginChecksAction extends InvisibleAction {
         this.checkRunId = checkRunId;
     }
 
+    @SuppressWarnings("lgtm[jenkins/plaintext-storage]")
     @NonNull
     String getCheckKey() {
         return checkKey;
