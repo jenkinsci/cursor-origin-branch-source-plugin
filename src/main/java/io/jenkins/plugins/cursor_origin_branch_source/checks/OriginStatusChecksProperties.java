@@ -39,11 +39,6 @@ public class OriginStatusChecksProperties extends AbstractStatusChecksProperties
     }
 
     @Override
-    public boolean isSuppressLogs(final Job<?, ?> job) {
-        return getConfigurations(job).isSuppressLogs();
-    }
-
-    @Override
     public boolean isSkipProgressUpdates(final Job<?, ?> job) {
         return getConfigurations(job).isSkipProgressUpdates();
     }

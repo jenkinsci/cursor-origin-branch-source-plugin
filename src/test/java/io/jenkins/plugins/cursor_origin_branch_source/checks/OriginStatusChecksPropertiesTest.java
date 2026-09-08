@@ -30,7 +30,6 @@ class OriginStatusChecksPropertiesTest {
 
         assertThat(properties.getName(job), is("Jenkins"));
         assertThat(properties.isSkipped(job), is(false));
-        assertThat(properties.isSuppressLogs(job), is(false));
         assertThat(properties.isSkipProgressUpdates(job), is(false));
     }
 
@@ -47,7 +46,6 @@ class OriginStatusChecksPropertiesTest {
         OriginChecksTrait trait = new OriginChecksTrait();
         trait.setName("continuous-integration/jenkins");
         trait.setSkip(true);
-        trait.setSuppressLogs(true);
         trait.setSkipProgressUpdates(true);
         OriginSCMSource source = new OriginSCMSource("acme-corp", "widgets");
         source.setTraits(List.of(new BranchDiscoveryTrait(), trait));
@@ -56,7 +54,6 @@ class OriginStatusChecksPropertiesTest {
 
         assertThat(properties.getName(job), is("continuous-integration/jenkins"));
         assertThat(properties.isSkipped(job), is(true));
-        assertThat(properties.isSuppressLogs(job), is(true));
         assertThat(properties.isSkipProgressUpdates(job), is(true));
     }
 

@@ -24,7 +24,6 @@ public class OriginChecksTrait extends SCMSourceTrait implements OriginChecksCon
 
     private String name = "Jenkins";
     private boolean skip;
-    private boolean suppressLogs;
     private boolean skipProgressUpdates;
     private boolean verboseConsoleLog;
 
@@ -49,16 +48,6 @@ public class OriginChecksTrait extends SCMSourceTrait implements OriginChecksCon
     @DataBoundSetter
     public void setSkip(boolean skip) {
         this.skip = skip;
-    }
-
-    @Override
-    public boolean isSuppressLogs() {
-        return suppressLogs;
-    }
-
-    @DataBoundSetter
-    public void setSuppressLogs(boolean suppressLogs) {
-        this.suppressLogs = suppressLogs;
     }
 
     @Override
