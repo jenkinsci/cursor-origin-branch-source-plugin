@@ -18,6 +18,7 @@ import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model.Branc
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model.GitRef;
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model.ListBranchesResponse;
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model.ListPullRequestsResponse;
+import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model.OriginActor;
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model.PullRequest;
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model.Repo;
 import java.io.IOException;
@@ -33,14 +34,19 @@ import jenkins.plugins.git.AbstractGitSCMSource;
 import jenkins.plugins.git.GitRemoteHeadRefAction;
 import jenkins.plugins.git.GitSCMBuilder;
 import jenkins.scm.api.SCMHead;
+import jenkins.scm.api.SCMHeadCategory;
 import jenkins.scm.api.SCMHeadEvent;
 import jenkins.scm.api.SCMHeadObserver;
 import jenkins.scm.api.SCMRevision;
 import jenkins.scm.api.SCMSourceCriteria;
 import jenkins.scm.api.SCMSourceDescriptor;
 import jenkins.scm.api.SCMSourceEvent;
+import jenkins.scm.api.metadata.ContributorMetadataAction;
+import jenkins.scm.api.metadata.ObjectMetadataAction;
 import jenkins.scm.api.trait.SCMSourceTrait;
 import jenkins.scm.api.trait.SCMSourceTraitDescriptor;
+import jenkins.scm.impl.ChangeRequestSCMHeadCategory;
+import jenkins.scm.impl.UncategorizedSCMHeadCategory;
 import org.jenkinsci.Symbol;
 import org.kohsuke.stapler.AncestorInPath;
 import org.kohsuke.stapler.DataBoundConstructor;
@@ -256,6 +262,38 @@ public class OriginSCMSource extends AbstractGitSCMSource {
         }
     }
 
+    @NonNull
+    @Override
+    protected List<Action> retrieveActions(
+            @NonNull SCMHead head, @CheckForNull SCMHeadEvent event, @NonNull TaskListener listener)
+            throws IOException, InterruptedException {
+        if (!(head instanceof OriginPullRequestSCMHead prHead)) {
+            return Collections.emptyList();
+        }
+        OriginAppCredentials creds = lookupCredentials();
+        if (creds == null) {
+            return Collections.emptyList();
+        }
+        try {
+            OriginServiceApi api = OriginAppCredentials.apiWithToken(creds.mintToken());
+            PullRequest pr = api.originServiceGetPullRequest(repoOwner, repository, prHead.getNumber());
+            List<Action> actions = new ArrayList<>();
+            actions.add(new ObjectMetadataAction(pr.getTitle(), pr.getBody(), null));
+            OriginActor author = pr.getAuthor();
+            if (author != null && author.getUser() != null) {
+                String id = author.getUser().getId();
+                String email = author.getUser().getEmail();
+                actions.add(new ContributorMetadataAction(id, id, email));
+            }
+            return actions;
+        } catch (ApiException e) {
+            listener.getLogger()
+                    .println("Could not retrieve PR metadata for " + prHead.getName() + ": " + e.getMessage());
+            LOGGER.log(Level.WARNING, "Failed to retrieve PR metadata for " + repoOwner + "/" + repository, e);
+            return Collections.emptyList();
+        }
+    }
+
     @SuppressWarnings("rawtypes")
     @Override
     protected List<Action> retrieveActions(@CheckForNull SCMSourceEvent event, @NonNull TaskListener listener)
@@ -297,6 +335,14 @@ public class OriginSCMSource extends AbstractGitSCMSource {
         @Override
         public String getDisplayName() {
             return "Cursor Origin";
+        }
+
+        @Override
+        protected SCMHeadCategory[] createCategories() {
+            return new SCMHeadCategory[] {
+                new UncategorizedSCMHeadCategory(Messages._OriginSCMSource_BranchesCategory()),
+                new ChangeRequestSCMHeadCategory(Messages._OriginSCMSource_PullRequestsCategory()),
+            };
         }
 
         public List<SCMSourceTraitDescriptor> getTraitDescriptors() {

@@ -2,7 +2,9 @@ package io.jenkins.plugins.cursor_origin_branch_source;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 
@@ -112,6 +114,49 @@ class OriginSCMSourceTest extends MockOriginServerTestBase {
         r.waitUntilNoActivity();
 
         assertThat(mbp.getItems(), is(empty()));
+    }
+
+    /** PR job display name comes from the PR title returned by the API, not just "PR-N". */
+    @Test
+    void prDisplayNameEqualsPrTitle() throws Exception {
+        mockServer
+                .addRepo(OWNER, "titled-pr-repo", "main")
+                .branch("main", "aaaa1111")
+                .file("Jenkinsfile", JENKINSFILE)
+                .branch("feature-z", "cccc3333")
+                .file("Jenkinsfile", JENKINSFILE)
+                .pr(3, "feature-z", "cccc3333", "main", "aaaa1111", "My Descriptive PR Title");
+
+        WorkflowMultiBranchProject mbp = createMultiBranchProject("titled-pr-repo");
+        r.waitUntilNoActivity();
+
+        WorkflowJob prJob = mbp.getItem("PR-3");
+        assertThat("PR-3 job exists", prJob != null);
+        // branch-api appends " (#N)" to the ObjectMetadataAction title
+        assertThat(
+                "PR job display name includes PR title from API",
+                prJob.getDisplayName(),
+                containsString("My Descriptive PR Title"));
+    }
+
+    /** Multibranch project shows separate Branches and Pull Requests tabs. */
+    @Test
+    void separateBranchesAndPullRequestsTabs() throws Exception {
+        mockServer
+                .addRepo(OWNER, "tabbed-repo", "main")
+                .branch("main", "aaaa1111")
+                .file("Jenkinsfile", JENKINSFILE)
+                .branch("feature-q", "dddd4444")
+                .file("Jenkinsfile", JENKINSFILE)
+                .pr(2, "feature-q", "dddd4444", "main", "aaaa1111");
+
+        WorkflowMultiBranchProject mbp = createMultiBranchProject("tabbed-repo");
+        r.waitUntilNoActivity();
+
+        // view display names include item counts, e.g. "Branches (1)"
+        var viewNames = mbp.getViews().stream().map(v -> v.getDisplayName()).toList();
+        assertThat(viewNames, hasItem(containsString("Branches")));
+        assertThat(viewNames, hasItem(containsString("Pull Requests")));
     }
 
     private static void assertBuildSucceeded(WorkflowMultiBranchProject mbp, String jobName) throws Exception {
