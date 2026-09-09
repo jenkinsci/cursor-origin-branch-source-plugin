@@ -286,22 +286,22 @@ class TokenScopingTest extends MockOriginServerTestBase {
     @Disabled("issue #16: closed-mode credential enforcement not yet implemented; build succeeds instead of failing")
     @Test
     void withCredentialsClosedModeThrows() throws Exception {
-        mockGitServer.addRepo(OWNER, "closed-repo", "main", Map.of("file.txt", "hello"));
-
         WorkflowJob job = r.createProject(WorkflowJob.class, "closed-test");
-        job.addProperty(new ParametersDefinitionProperty(List.of(new StringParameterDefinition("INFO_REFS_URL", ""))));
+        job.addProperty(new ParametersDefinitionProperty(List.of(new StringParameterDefinition("REST_URL", ""))));
         job.setDefinition(new CpsFlowDefinition("""
                 node('remote') {
-                  withCredentials([usernameColonPassword(credentialsId: 'origin-test-creds', variable: 'CREDS')]) {
-                    sh 'curl -sf -u "$CREDS" "$INFO_REFS_URL"'
+                  withCredentials([usernamePassword(credentialsId: 'origin-test-creds',
+                      usernameVariable: 'USER', passwordVariable: 'TOKEN')]) {
+                    sh 'curl -sf -H "Authorization: Bearer $TOKEN" "$REST_URL"'
                   }
                 }
                 """, true));
-        String infoRefsUrl =
-                mockGitServer.baseUrl() + "/" + OWNER + "/closed-repo.git/info/refs?service=git-upload-pack";
         WorkflowRun build = r.assertBuildStatus(
                 Result.FAILURE,
-                job.scheduleBuild2(0, new ParametersAction(new StringParameterValue("INFO_REFS_URL", infoRefsUrl)))
+                job.scheduleBuild2(
+                                0,
+                                new ParametersAction(new StringParameterValue(
+                                        "REST_URL", mockServer.baseUrl() + "/v1/origin/installation/repos")))
                         .get());
         assertThat(build.getResult(), is(Result.FAILURE));
     }
