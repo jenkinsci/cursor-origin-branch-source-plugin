@@ -32,9 +32,10 @@ import org.eclipse.jgit.transport.UploadPack;
 /**
  * Minimal Git smart-HTTP server backed by JGit file-based repositories, for use in tests.
  *
- * <p>Authenticates via HTTP Basic, expecting password {@code oit_<JWT>} (or a bare JWT). Records
- * the {@code scopes} and {@code repositoryIds} claims from each request so tests can assert that
- * tokens were properly scoped.
+ * <p>Authenticates via HTTP Basic, expecting password {@code oit_<JWT>}. Records the
+ * {@code scopes} and {@code repositoryIds} claims from each request so tests can assert that
+ * tokens were properly scoped, and enforces that scoped tokens (non-empty {@code repositoryIds})
+ * only grant access to the repos they name.
  */
 class MockGitServer implements Closeable {
 
@@ -48,6 +49,8 @@ class MockGitServer implements Closeable {
     private final Map<String, File> repoDirs = new ConcurrentHashMap<>();
     /** "owner/name" → auth claims from most recent authenticated request */
     private final Map<String, LastAuth> lastAuths = new ConcurrentHashMap<>();
+    /** "owner/name" → the repo ID that a scoped token must include to access this repo */
+    private final Map<String, String> repoIds = new ConcurrentHashMap<>();
 
     private Path tempDir;
     private HttpServer server;
@@ -58,12 +61,23 @@ class MockGitServer implements Closeable {
     }
 
     /**
-     * Creates a file-based git repo with one commit on the given branch and registers it under
-     * {@code owner/name}.
+     * Creates a file-based git repo with one commit on the given branch. No repo ID is registered,
+     * so only unrestricted tokens (empty {@code repositoryIds}) can access it.
      *
      * @return the HEAD commit SHA
      */
     String addRepo(String owner, String name, String branchName, Map<String, String> files) throws Exception {
+        return addRepo(owner, name, null, branchName, files);
+    }
+
+    /**
+     * Creates a file-based git repo with one commit on the given branch and registers it under
+     * {@code owner/name} with the given {@code repoId}. Scoped tokens must include this ID.
+     *
+     * @return the HEAD commit SHA
+     */
+    String addRepo(String owner, String name, String repoId, String branchName, Map<String, String> files)
+            throws Exception {
         if (tempDir == null) {
             tempDir = Files.createTempDirectory("mock-git-server");
         }
@@ -80,8 +94,12 @@ class MockGitServer implements Closeable {
             git.commit()
                     .setAuthor("Test", "test@example.com")
                     .setMessage("initial")
+                    .setSign(false)
                     .call();
             repoDirs.put(owner + "/" + name, repoDir);
+            if (repoId != null) {
+                repoIds.put(owner + "/" + name, repoId);
+            }
             return git.getRepository().resolve("HEAD").getName();
         }
     }
@@ -142,7 +160,7 @@ class MockGitServer implements Closeable {
 
         LastAuth auth = authenticate(he, owner, name);
         if (auth == null) {
-            return; // 401 already sent
+            return; // error already sent
         }
         lastAuths.put(owner + "/" + name, auth);
 
@@ -186,10 +204,11 @@ class MockGitServer implements Closeable {
     }
 
     /**
-     * Parses Basic auth, strips the {@code oit_} prefix, verifies the JWT against the Origin
-     * server's public key, and records the claims as {@link LastAuth}.
+     * Parses Basic auth, requires the {@code oit_} prefix, verifies the JWT against the Origin
+     * server's public key, enforces repository ID scoping, and records the claims as
+     * {@link LastAuth}.
      *
-     * @return the auth record, or {@code null} if authentication failed (401 already sent)
+     * @return the auth record, or {@code null} if authentication or authorization failed
      */
     private LastAuth authenticate(HttpExchange he, String owner, String name) throws IOException {
         String header = he.getRequestHeaders().getFirst("Authorization");
@@ -201,17 +220,30 @@ class MockGitServer implements Closeable {
         String decoded = new String(Base64.getDecoder().decode(header.substring(6)));
         int colon = decoded.indexOf(':');
         String password = colon >= 0 ? decoded.substring(colon + 1) : decoded;
-        String jwtPart = password.startsWith("oit_") ? password.substring(4) : password;
+        if (!password.startsWith("oit_")) {
+            LOGGER.warning("Git auth to " + owner + "/" + name + ": token does not start with oit_");
+            he.getResponseHeaders().set("WWW-Authenticate", "Basic realm=\"git\"");
+            sendStatus(he, 401);
+            return null;
+        }
+        String jwtPart = password.substring(4);
         try {
             Jws<Claims> jws = Jwts.parser().verifyWith(originPublicKey).build().parseSignedClaims(jwtPart);
             Claims claims = jws.getPayload();
             @SuppressWarnings("unchecked")
-            List<String> repoIds = (List<String>) claims.get("repositoryIds");
+            List<String> tokenRepoIds = (List<String>) claims.get("repositoryIds");
             @SuppressWarnings("unchecked")
             List<String> scopes = (List<String>) claims.get("scopes");
-            return new LastAuth(
-                    repoIds != null ? List.copyOf(repoIds) : List.of(),
-                    scopes != null ? List.copyOf(scopes) : List.of());
+            List<String> effectiveRepoIds = tokenRepoIds != null ? List.copyOf(tokenRepoIds) : List.of();
+            // Enforce scoping: if token names specific repos, this repo must be among them
+            String registeredId = repoIds.get(owner + "/" + name);
+            if (registeredId != null && !effectiveRepoIds.isEmpty() && !effectiveRepoIds.contains(registeredId)) {
+                LOGGER.warning("Token repositoryIds " + effectiveRepoIds + " does not permit access to " + owner + "/"
+                        + name + " (id=" + registeredId + ")");
+                sendStatus(he, 403);
+                return null;
+            }
+            return new LastAuth(effectiveRepoIds, scopes != null ? List.copyOf(scopes) : List.of());
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "JWT verification failed for git auth to " + owner + "/" + name, e);
             he.getResponseHeaders().set("WWW-Authenticate", "Basic realm=\"git\"");
