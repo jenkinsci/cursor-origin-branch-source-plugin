@@ -43,7 +43,7 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
     private final String appId;
     private final String installationId;
     private final Secret privateKey;
-    private boolean open;
+    private boolean unrestricted;
 
     @DataBoundConstructor
     public OriginAppCredentials(
@@ -72,12 +72,12 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
     }
 
     @DataBoundSetter
-    public void setOpen(boolean open) {
-        this.open = open;
+    public void setUnrestricted(boolean unrestricted) {
+        this.unrestricted = unrestricted;
     }
 
-    public boolean isOpen() {
-        return open;
+    public boolean isUnrestricted() {
+        return unrestricted;
     }
 
     @NonNull
@@ -94,7 +94,7 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
 
     @Override
     public OriginAppCredentials forRun(Run<?, ?> run) {
-        // TODO: infer repository context from OriginSCMSource once that class exists
+        // TODO: scope token to the specific repo for this run (issue #16), unless unrestricted
         return this;
     }
 

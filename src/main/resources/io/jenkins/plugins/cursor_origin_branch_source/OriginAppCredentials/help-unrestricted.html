@@ -1,0 +1,15 @@
+<p>
+    When checked, this credential may be used freely in pipeline steps such as
+    <code>withCredentials</code> and <code>withGit</code>, exposing the raw access token to
+    arbitrary shell commands.
+</p>
+<p>
+    When unchecked (the default), the credential is <em>restricted</em>: it can only be used
+    by trusted Jenkins infrastructure (such as <code>checkout scm</code>) that scopes the
+    token to the specific repository being accessed.  Pipeline steps that would expose the
+    token to user-defined code are refused.
+</p>
+<p>
+    Only enable this for credentials whose app installation has been intentionally granted
+    access to all repositories that pipeline authors may target.
+</p>

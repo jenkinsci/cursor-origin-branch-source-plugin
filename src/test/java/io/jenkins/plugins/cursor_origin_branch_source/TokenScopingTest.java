@@ -44,10 +44,10 @@ import org.junit.jupiter.api.Test;
  *   <li>2.i MBP {@code checkout scm}: token must be scoped to the specific repo
  *   <li>2.ii Standalone project with {@code CpsScmFlowDefinition}: same scoping required
  *   <li>3. {@code @Library} controller clone: token need not be scoped
- *   <li>4.a {@code withGit} open mode: git clone via credential helper binding
- *   <li>4.b {@code withCredentials} open mode: git clone via URL-embedded credentials
- *   <li>4.c {@code withCredentials} open mode: REST API call with Bearer token
- *   <li>4 (closed): {@code withCredentials} closed mode must fail immediately
+ *   <li>4.a {@code withGit} unrestricted credential: git clone via credential helper binding
+ *   <li>4.b {@code withCredentials} unrestricted credential: git clone via URL-embedded credentials
+ *   <li>4.c {@code withCredentials} unrestricted credential: REST API call with Bearer token
+ *   <li>4 (restricted): {@code withCredentials} with restricted credential must fail immediately
  * </ul>
  */
 class TokenScopingTest extends MockOriginServerTestBase {
@@ -188,16 +188,16 @@ class TokenScopingTest extends MockOriginServerTestBase {
         assertThat(libAuth.repositoryIds(), is(empty()));
     }
 
-    // ── 4.a: withGit open mode ──────────────────────────────────────────────
+    // ── 4.a: withGit unrestricted credential ────────────────────────────────
 
     /**
      * Scenario 4.a: {@code withGit} (via {@code gitUsernamePassword} binding) running a git
-     * clone succeeds when the credential has {@code open=true}.
+     * clone succeeds when the credential is unrestricted.
      */
     @Test
-    void withGitOpenModeSucceeds() throws Exception {
+    void withGitUnrestrictedSucceeds() throws Exception {
         mockGitServer.addRepo(OWNER, "git-repo", "main", Map.of("file.txt", "hello"));
-        addOpenCredentials("origin-open-creds");
+        addUnrestrictedCredentials("origin-open-creds");
 
         WorkflowJob job = r.createProject(WorkflowJob.class, "with-git-test");
         job.addProperty(new ParametersDefinitionProperty(List.of(new StringParameterDefinition("REPO_URL", ""))));
@@ -217,16 +217,16 @@ class TokenScopingTest extends MockOriginServerTestBase {
                         .get());
     }
 
-    // ── 4.b: withCredentials open mode (clone) ───────────────────────────────
+    // ── 4.b: withCredentials unrestricted credential (clone) ─────────────────
 
     /**
      * Scenario 4.b: {@code withCredentials} with a {@code usernameColonPassword} binding embedding
-     * credentials in the git clone URL succeeds when the credential has {@code open=true}.
+     * credentials in the git clone URL succeeds when the credential is unrestricted.
      */
     @Test
-    void withCredentialsOpenModeCloneSucceeds() throws Exception {
+    void withCredentialsUnrestrictedCloneSucceeds() throws Exception {
         mockGitServer.addRepo(OWNER, "clone-repo", "main", Map.of("file.txt", "hello"));
-        addOpenCredentials("origin-open-creds");
+        addUnrestrictedCredentials("origin-open-creds");
 
         WorkflowJob job = r.createProject(WorkflowJob.class, "clone-test");
         job.addProperty(new ParametersDefinitionProperty(List.of(new StringParameterDefinition("REPO_BASE", ""))));
@@ -245,15 +245,15 @@ class TokenScopingTest extends MockOriginServerTestBase {
                         .get());
     }
 
-    // ── 4.c: withCredentials open mode (REST API) ────────────────────────────
+    // ── 4.c: withCredentials unrestricted credential (REST API) ──────────────
 
     /**
      * Scenario 4.c: {@code withCredentials} with a {@code usernamePassword} binding exposes the
      * {@code oit_} token as a shell variable, which can be used as a Bearer token for REST API calls.
      */
     @Test
-    void withCredentialsOpenModeCurlSucceeds() throws Exception {
-        addOpenCredentials("origin-open-creds");
+    void withCredentialsUnrestrictedCurlSucceeds() throws Exception {
+        addUnrestrictedCredentials("origin-open-creds");
 
         WorkflowJob job = r.createProject(WorkflowJob.class, "curl-test");
         job.addProperty(new ParametersDefinitionProperty(List.of(new StringParameterDefinition("REST_URL", ""))));
@@ -274,19 +274,19 @@ class TokenScopingTest extends MockOriginServerTestBase {
                         .get());
     }
 
-    // ── 4 (closed): withCredentials closed mode ──────────────────────────────
+    // ── 4 (restricted): withCredentials restricted credential ────────────────
 
     /**
-     * Scenario 4 (closed): using an {@code OriginAppCredentials} without {@code open=true} in a
-     * {@code withCredentials} step must fail immediately — the step should refuse to bind the
-     * credential.
+     * Scenario 4 (restricted): using a restricted {@code OriginAppCredentials} (i.e.
+     * {@code unrestricted=false}) in a {@code withCredentials} step must fail immediately — the
+     * step should refuse to bind the credential.
      *
-     * <p>Disabled until issue #16 implements the open-flag enforcement.
+     * <p>Disabled until issue #16 implements restricted-credential enforcement.
      */
-    @Disabled("issue #16: closed-mode credential enforcement not yet implemented; build succeeds instead of failing")
+    @Disabled("issue #16: restricted credential enforcement not yet implemented; build succeeds instead of failing")
     @Test
-    void withCredentialsClosedModeThrows() throws Exception {
-        WorkflowJob job = r.createProject(WorkflowJob.class, "closed-test");
+    void withCredentialsRestrictedThrows() throws Exception {
+        WorkflowJob job = r.createProject(WorkflowJob.class, "restricted-test");
         job.addProperty(new ParametersDefinitionProperty(List.of(new StringParameterDefinition("REST_URL", ""))));
         job.setDefinition(new CpsFlowDefinition("""
                 node('remote') {
@@ -308,17 +308,17 @@ class TokenScopingTest extends MockOriginServerTestBase {
 
     // ── helpers ──────────────────────────────────────────────────────────────
 
-    private void addOpenCredentials(String id) throws Exception {
-        OriginAppCredentials openCreds = new OriginAppCredentials(
+    private void addUnrestrictedCredentials(String id) throws Exception {
+        OriginAppCredentials creds = new OriginAppCredentials(
                 CredentialsScope.GLOBAL,
                 id,
-                "Open test credentials",
+                "Unrestricted test credentials",
                 APP_ID,
                 INSTALLATION_ID,
                 Secret.fromString(toPkcs8Pem(appKeyPair)));
-        openCreds.setOpen(true);
+        creds.setUnrestricted(true);
         CredentialsStore store =
                 CredentialsProvider.lookupStores(r.jenkins).iterator().next();
-        store.addCredentials(Domain.global(), openCreds);
+        store.addCredentials(Domain.global(), creds);
     }
 }

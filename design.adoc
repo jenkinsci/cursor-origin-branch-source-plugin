@@ -248,8 +248,8 @@ Test scenarios:
   `OriginSCMFileSystem.BuilderImpl.supports(GitSCM)` recognition (not yet implemented).
 . **3.3 `libraryCloneOnControllerUsesUnrestrictedToken`** — `@Library` controller clone uses
   unrestricted token by design.
-. **3.4.a `withGitOpenModeSucceeds`** — `gitUsernamePassword` binding runs a git clone.
-. **3.4.b `withCredentialsOpenModeCloneSucceeds`** — `usernameColonPassword` binding runs a git clone.
-. **3.4.c `withCredentialsOpenModeCurlSucceeds`** — `usernameColonPassword` binding runs curl.
-. **3.4 closed `withCredentialsClosedModeThrows`** — `@Disabled`: closed-mode enforcement not implemented;
+. **3.4.a `withGitUnrestrictedSucceeds`** — `gitUsernamePassword` binding runs a git clone with an unrestricted credential.
+. **3.4.b `withCredentialsUnrestrictedCloneSucceeds`** — `usernameColonPassword` binding runs a git clone with an unrestricted credential.
+. **3.4.c `withCredentialsUnrestrictedCurlSucceeds`** — `usernamePassword` binding runs curl against REST API with an unrestricted credential.
+. **3.4 restricted `withCredentialsRestrictedThrows`** — `@Disabled`: restricted-credential enforcement not implemented;
   build currently succeeds instead of failing.
