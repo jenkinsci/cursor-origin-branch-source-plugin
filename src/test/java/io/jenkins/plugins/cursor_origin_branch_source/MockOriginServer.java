@@ -142,6 +142,10 @@ class MockOriginServer implements Closeable {
 
     /** appId → public key used to verify incoming app-JWTs */
     private final Map<String, PublicKey> appPublicKeys = new ConcurrentHashMap<>();
+    /** appId → the scopes this app is approved for at installation time */
+    private final Map<String, List<String>> appDefaultScopes = new ConcurrentHashMap<>();
+    /** installationId → repo IDs this installation can access; absent means unrestricted */
+    private final Map<String, List<String>> installationAccessibleRepoIds = new HashMap<>();
 
     /** key pair used to sign / verify access tokens */
     private final KeyPair serverKeyPair;
@@ -165,9 +169,27 @@ class MockOriginServer implements Closeable {
 
     // ── builder API ─────────────────────────────────────────────────────────
 
-    /** Register an app's public key so that JWTs it signs will be accepted. */
-    MockOriginServer registerApp(String appId, PublicKey publicKey) {
+    /**
+     * Register an app's public key and the scopes it is approved for.
+     *
+     * <p>When a token is requested without explicit scopes, all approved scopes are granted; when
+     * scopes are requested, only the intersection with approved scopes is granted (unsatisfiable
+     * scope requests are silently dropped). Similarly for {@code repositoryIds} when
+     * {@link #registerInstallation} has been called.
+     */
+    MockOriginServer registerApp(String appId, PublicKey publicKey, List<String> approvedScopes) {
         appPublicKeys.put(appId, publicKey);
+        appDefaultScopes.put(appId, List.copyOf(approvedScopes));
+        return this;
+    }
+
+    /**
+     * Restrict an installation to a specific set of repo IDs. If not called, the installation
+     * can access all repos. When a token is requested with repo IDs outside this set, only the
+     * intersection is granted.
+     */
+    MockOriginServer registerInstallation(String installationId, List<String> accessibleRepoIds) {
+        installationAccessibleRepoIds.put(installationId, List.copyOf(accessibleRepoIds));
         return this;
     }
 
@@ -299,8 +321,9 @@ class MockOriginServer implements Closeable {
             return;
         }
         String jwt = auth.substring("Bearer ".length());
+        String appId;
         try {
-            Jwts.parser()
+            var jws = Jwts.parser()
                     .keyLocator(new LocatorAdapter<>() {
                         @Override
                         protected Key locate(JwsHeader header) {
@@ -309,15 +332,16 @@ class MockOriginServer implements Closeable {
                     })
                     .build()
                     .parseSignedClaims(jwt);
+            appId = jws.getHeader().getKeyId();
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "JWT verification failed", e);
             sendError(he, 403, "invalid JWT: " + e.getMessage());
             return;
         }
 
-        // Parse optional scopes/repositoryIds from the request body
-        List<String> scopes = new ArrayList<>();
-        List<String> repositoryIds = new ArrayList<>();
+        // Parse requested scopes/repositoryIds from the request body
+        List<String> requestedScopes = new ArrayList<>();
+        List<String> requestedRepoIds = new ArrayList<>();
         byte[] bodyBytes = he.getRequestBody().readAllBytes();
         if (bodyBytes.length > 0) {
             try (var parser = jsonFactory.createParser(bodyBytes)) {
@@ -328,13 +352,13 @@ class MockOriginServer implements Closeable {
                         if ("scopes".equals(field) && parser.currentToken() == JsonToken.START_ARRAY) {
                             while (parser.nextToken() != JsonToken.END_ARRAY) {
                                 if (parser.currentToken() == JsonToken.VALUE_STRING) {
-                                    scopes.add(parser.getText());
+                                    requestedScopes.add(parser.getText());
                                 }
                             }
                         } else if ("repositoryIds".equals(field) && parser.currentToken() == JsonToken.START_ARRAY) {
                             while (parser.nextToken() != JsonToken.END_ARRAY) {
                                 if (parser.currentToken() == JsonToken.VALUE_STRING) {
-                                    repositoryIds.add(parser.getText());
+                                    requestedRepoIds.add(parser.getText());
                                 }
                             }
                         }
@@ -345,9 +369,30 @@ class MockOriginServer implements Closeable {
             }
         }
 
-        // repository:metadata:read is automatically added to every scoped token
-        if (!scopes.isEmpty() && !scopes.contains("repository:metadata:read")) {
-            scopes.add("repository:metadata:read");
+        // Effective scopes = requested ∩ approved; if no scopes requested, use all approved
+        List<String> approvedScopes = appDefaultScopes.getOrDefault(appId, List.of());
+        List<String> effectiveScopes;
+        if (requestedScopes.isEmpty()) {
+            effectiveScopes = new ArrayList<>(approvedScopes);
+        } else {
+            effectiveScopes = new ArrayList<>(requestedScopes);
+            effectiveScopes.retainAll(approvedScopes);
+        }
+        // repository:metadata:read is always present in any non-empty scoped token
+        if (!effectiveScopes.isEmpty() && !effectiveScopes.contains("repository:metadata:read")) {
+            effectiveScopes.add("repository:metadata:read");
+        }
+
+        // Effective repoIds = requested ∩ installation's accessible repos; absent = unrestricted
+        List<String> accessibleRepos = installationAccessibleRepoIds.get(installationId);
+        List<String> effectiveRepoIds;
+        if (accessibleRepos == null) {
+            effectiveRepoIds = new ArrayList<>(requestedRepoIds);
+        } else if (requestedRepoIds.isEmpty()) {
+            effectiveRepoIds = new ArrayList<>();
+        } else {
+            effectiveRepoIds = new ArrayList<>(requestedRepoIds);
+            effectiveRepoIds.retainAll(accessibleRepos);
         }
 
         Instant now = Instant.now();
@@ -357,11 +402,11 @@ class MockOriginServer implements Closeable {
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(exp))
                 .id(UUID.randomUUID().toString());
-        if (!scopes.isEmpty()) {
-            builder.claim("scopes", scopes);
+        if (!effectiveScopes.isEmpty()) {
+            builder.claim("scopes", effectiveScopes);
         }
-        if (!repositoryIds.isEmpty()) {
-            builder.claim("repositoryIds", repositoryIds);
+        if (!effectiveRepoIds.isEmpty()) {
+            builder.claim("repositoryIds", effectiveRepoIds);
         }
         String payload = builder.signWith(serverKeyPair.getPrivate()).compact();
         String accessToken = "oit_" + payload;

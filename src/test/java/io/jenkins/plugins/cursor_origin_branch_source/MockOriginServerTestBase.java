@@ -10,6 +10,7 @@ import hudson.util.Secret;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.util.Base64;
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.AutoClose;
 import org.junit.jupiter.api.BeforeEach;
@@ -56,7 +57,10 @@ abstract class MockOriginServerTestBase {
         appKeyPair = gen.generateKeyPair();
 
         mockServer = new MockOriginServer();
-        mockServer.registerApp(APP_ID, appKeyPair.getPublic());
+        mockServer.registerApp(
+                APP_ID,
+                appKeyPair.getPublic(),
+                List.of("repository:contents:read", "repository:pull_requests:read", "repository:checks:write"));
         String mockUrl = mockServer.start();
 
         mockGitServer = new MockGitServer(mockServer.serverKeyPair().getPublic());
