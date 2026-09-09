@@ -58,6 +58,9 @@ public class OriginSCMSource extends AbstractGitSCMSource {
 
     private static final Logger LOGGER = Logger.getLogger(OriginSCMSource.class.getName());
 
+    /** Overridable in tests to point at a mock git server. */
+    static String GIT_BASE_URL = "https://origin.cursor.com";
+
     private final String repoOwner;
     private final String repository;
     private String credentialsId;
@@ -89,7 +92,7 @@ public class OriginSCMSource extends AbstractGitSCMSource {
 
     @Override
     public String getRemote() {
-        return "https://origin.cursor.com/" + repoOwner + "/" + repository + ".git";
+        return GIT_BASE_URL + "/" + repoOwner + "/" + repository + ".git";
     }
 
     @NonNull

@@ -2,6 +2,7 @@ package io.jenkins.plugins.cursor_origin_branch_source;
 
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.JsonToken;
 import com.sun.net.httpserver.Filter;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -106,6 +107,7 @@ class MockOriginServer implements Closeable {
     static class MockRepo {
         final String owner;
         final String name;
+        final String id;
         final String defaultBranch;
         final List<MockBranch> branches = new ArrayList<>();
         final List<MockPR> pullRequests = new ArrayList<>();
@@ -113,6 +115,7 @@ class MockOriginServer implements Closeable {
         MockRepo(String owner, String name, String defaultBranch) {
             this.owner = owner;
             this.name = name;
+            this.id = "repo_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
             this.defaultBranch = defaultBranch;
         }
 
@@ -191,6 +194,10 @@ class MockOriginServer implements Closeable {
     }
 
     // ── lifecycle ────────────────────────────────────────────────────────────
+
+    String baseUrl() {
+        return baseUrl;
+    }
 
     String start() throws IOException {
         server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
@@ -282,7 +289,8 @@ class MockOriginServer implements Closeable {
 
     /**
      * Verifies the incoming app-signed JWT, then issues an {@code oit_} access token signed by
-     * the server's own key.
+     * the server's own key. The POST body may contain {@code scopes} and {@code repositoryIds}
+     * arrays, which are embedded as claims in the issued token for later verification.
      */
     private void handleTokenExchange(HttpExchange he, String installationId) throws IOException {
         String auth = he.getRequestHeaders().getFirst("Authorization");
@@ -307,15 +315,50 @@ class MockOriginServer implements Closeable {
             return;
         }
 
+        // Parse optional scopes/repositoryIds from the request body
+        List<String> scopes = new ArrayList<>();
+        List<String> repositoryIds = new ArrayList<>();
+        byte[] bodyBytes = he.getRequestBody().readAllBytes();
+        if (bodyBytes.length > 0) {
+            try (var parser = jsonFactory.createParser(bodyBytes)) {
+                while (parser.nextToken() != null) {
+                    if (parser.currentToken() == JsonToken.FIELD_NAME) {
+                        String field = parser.currentName();
+                        parser.nextToken();
+                        if ("scopes".equals(field) && parser.currentToken() == JsonToken.START_ARRAY) {
+                            while (parser.nextToken() != JsonToken.END_ARRAY) {
+                                if (parser.currentToken() == JsonToken.VALUE_STRING) {
+                                    scopes.add(parser.getText());
+                                }
+                            }
+                        } else if ("repositoryIds".equals(field) && parser.currentToken() == JsonToken.START_ARRAY) {
+                            while (parser.nextToken() != JsonToken.END_ARRAY) {
+                                if (parser.currentToken() == JsonToken.VALUE_STRING) {
+                                    repositoryIds.add(parser.getText());
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                LOGGER.warning("Failed to parse token exchange body: " + e.getMessage());
+            }
+        }
+
         Instant now = Instant.now();
         Instant exp = now.plus(Duration.ofHours(1));
-        String payload = Jwts.builder()
+        var builder = Jwts.builder()
                 .subject(installationId)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(exp))
-                .id(UUID.randomUUID().toString())
-                .signWith(serverKeyPair.getPrivate())
-                .compact();
+                .id(UUID.randomUUID().toString());
+        if (!scopes.isEmpty()) {
+            builder.claim("scopes", scopes);
+        }
+        if (!repositoryIds.isEmpty()) {
+            builder.claim("repositoryIds", repositoryIds);
+        }
+        String payload = builder.signWith(serverKeyPair.getPrivate()).compact();
         String accessToken = "oit_" + payload;
 
         sendJson(he, 200, gen -> {
@@ -591,10 +634,11 @@ class MockOriginServer implements Closeable {
 
     private void writeRepoObject(JsonGenerator gen, MockRepo repo) throws IOException {
         gen.writeStartObject();
+        gen.writeStringField("id", repo.id);
         gen.writeStringField("name", repo.name);
         gen.writeStringField("fullName", repo.owner + "/" + repo.name);
         gen.writeStringField("defaultBranch", repo.defaultBranch);
-        gen.writeStringField("cloneUrl", "https://origin.cursor.com/" + repo.owner + "/" + repo.name + ".git");
+        gen.writeStringField("cloneUrl", OriginSCMSource.GIT_BASE_URL + "/" + repo.owner + "/" + repo.name + ".git");
         gen.writeObjectFieldStart("owner");
         gen.writeStringField("slug", repo.owner);
         gen.writeEndObject();
@@ -660,7 +704,6 @@ class MockOriginServer implements Closeable {
         @Override
         public void doFilter(HttpExchange he, Chain chain) throws IOException {
             LOGGER.fine(() -> he.getRequestMethod() + " " + he.getRequestURI());
-            drainBody(he);
             try {
                 dispatch(he);
             } catch (HaltException x) {

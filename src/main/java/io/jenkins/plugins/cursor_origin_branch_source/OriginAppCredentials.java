@@ -28,6 +28,7 @@ import java.util.logging.Logger;
 import jenkins.security.SlaveToMasterCallable;
 import jenkins.util.JenkinsJVM;
 import org.kohsuke.stapler.DataBoundConstructor;
+import org.kohsuke.stapler.DataBoundSetter;
 
 public class OriginAppCredentials extends BaseStandardCredentials implements StandardUsernamePasswordCredentials {
 
@@ -42,6 +43,7 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
     private final String appId;
     private final String installationId;
     private final Secret privateKey;
+    private boolean open;
 
     @DataBoundConstructor
     public OriginAppCredentials(
@@ -69,6 +71,15 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
         return privateKey;
     }
 
+    @DataBoundSetter
+    public void setOpen(boolean open) {
+        this.open = open;
+    }
+
+    public boolean isOpen() {
+        return open;
+    }
+
     @NonNull
     @Override
     public String getUsername() {
@@ -91,7 +102,7 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
     String mintToken() {
         // TODO: introduce token caching (see GitHubAppCredentials) if needed
         JenkinsJVM.checkJenkinsJVM();
-        return doMintToken(appId, installationId, privateKey.getPlainText());
+        return doMintToken(appId, installationId, privateKey.getPlainText(), "controller");
     }
 
     static OriginServiceApi apiWithToken(String bearerToken) {
@@ -101,7 +112,7 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
         return new OriginServiceApi(client);
     }
 
-    static String doMintToken(String appId, String installationId, String plainPrivateKey) {
+    static String doMintToken(String appId, String installationId, String plainPrivateKey, String callerContext) {
         try {
             PrivateKey key = parseEd25519Key(plainPrivateKey);
             Instant now = Instant.now();
@@ -118,11 +129,18 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
                     .compact();
             // TODO: pass repositoryIds for per-repo scoping
             //   (see OriginServiceCreateInstallationAccessTokenRequest.repositoryIds)
-            InstallationAccessToken token = apiWithToken(jwt)
-                    .originServiceCreateInstallationAccessToken(
-                            installationId, new OriginServiceCreateInstallationAccessTokenRequest());
+            OriginServiceCreateInstallationAccessTokenRequest req =
+                    new OriginServiceCreateInstallationAccessTokenRequest();
+            LOGGER.fine(() -> "Minting installation access token for app=" + appId
+                    + " installation=" + installationId
+                    + " caller=" + callerContext
+                    + " scopes=" + req.getScopes()
+                    + " repos=" + req.getRepositoryIds());
+            InstallationAccessToken token =
+                    apiWithToken(jwt).originServiceCreateInstallationAccessToken(installationId, req);
             LOGGER.fine(() -> "Minted installation access token for app=" + appId
                     + " installation=" + installationId
+                    + " caller=" + callerContext
                     + " expiresAt=" + token.getExpiresAt());
             return token.getToken();
         } catch (ApiException e) {
@@ -216,7 +234,8 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
             return doMintToken(
                     trustedData.o().appId(),
                     trustedData.o().installationId(),
-                    trustedData.o().privateKey());
+                    trustedData.o().privateKey(),
+                    "agent");
         }
     }
 
