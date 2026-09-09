@@ -345,6 +345,11 @@ class MockOriginServer implements Closeable {
             }
         }
 
+        // repository:metadata:read is automatically added to every scoped token
+        if (!scopes.isEmpty() && !scopes.contains("repository:metadata:read")) {
+            scopes.add("repository:metadata:read");
+        }
+
         Instant now = Instant.now();
         Instant exp = now.plus(Duration.ofHours(1));
         var builder = Jwts.builder()

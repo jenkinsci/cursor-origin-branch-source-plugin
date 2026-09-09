@@ -26,6 +26,7 @@ import java.util.regex.Pattern;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.transport.PacketLineOut;
+import org.eclipse.jgit.transport.ReceivePack;
 import org.eclipse.jgit.transport.RefAdvertiser;
 import org.eclipse.jgit.transport.UploadPack;
 
@@ -173,22 +174,37 @@ class MockGitServer implements Closeable {
         try (Repository repo = Git.open(repoDir).getRepository()) {
             if ("/info/refs".equals(rest) && "GET".equals(he.getRequestMethod())) {
                 String service = queryParam(he, "service");
-                if (!"git-upload-pack".equals(service)) {
+                if ("git-upload-pack".equals(service)) {
+                    if (!checkScopes(he, auth, false)) return;
+                    he.getResponseHeaders().set("Content-Type", "application/x-git-upload-pack-advertisement");
+                    he.getResponseHeaders().set("Cache-Control", "no-cache");
+                    he.sendResponseHeaders(200, 0);
+                    try (OutputStream out = he.getResponseBody()) {
+                        PacketLineOut pktOut = new PacketLineOut(out);
+                        pktOut.writeString("# service=git-upload-pack\n");
+                        pktOut.end();
+                        UploadPack up = new UploadPack(repo);
+                        up.setBiDirectionalPipe(false);
+                        up.sendAdvertisedRefs(new RefAdvertiser.PacketLineOutRefAdvertiser(pktOut));
+                    }
+                } else if ("git-receive-pack".equals(service)) {
+                    if (!checkScopes(he, auth, true)) return;
+                    he.getResponseHeaders().set("Content-Type", "application/x-git-receive-pack-advertisement");
+                    he.getResponseHeaders().set("Cache-Control", "no-cache");
+                    he.sendResponseHeaders(200, 0);
+                    try (OutputStream out = he.getResponseBody()) {
+                        PacketLineOut pktOut = new PacketLineOut(out);
+                        pktOut.writeString("# service=git-receive-pack\n");
+                        pktOut.end();
+                        ReceivePack rp = new ReceivePack(repo);
+                        rp.setBiDirectionalPipe(false);
+                        rp.sendAdvertisedRefs(new RefAdvertiser.PacketLineOutRefAdvertiser(pktOut));
+                    }
+                } else {
                     sendStatus(he, 403);
-                    return;
-                }
-                he.getResponseHeaders().set("Content-Type", "application/x-git-upload-pack-advertisement");
-                he.getResponseHeaders().set("Cache-Control", "no-cache");
-                he.sendResponseHeaders(200, 0);
-                try (OutputStream out = he.getResponseBody()) {
-                    PacketLineOut pktOut = new PacketLineOut(out);
-                    pktOut.writeString("# service=git-upload-pack\n");
-                    pktOut.end();
-                    UploadPack up = new UploadPack(repo);
-                    up.setBiDirectionalPipe(false);
-                    up.sendAdvertisedRefs(new RefAdvertiser.PacketLineOutRefAdvertiser(pktOut));
                 }
             } else if ("/git-upload-pack".equals(rest) && "POST".equals(he.getRequestMethod())) {
+                if (!checkScopes(he, auth, false)) return;
                 he.getResponseHeaders().set("Content-Type", "application/x-git-upload-pack-result");
                 he.getResponseHeaders().set("Cache-Control", "no-cache");
                 he.sendResponseHeaders(200, 0);
@@ -197,10 +213,56 @@ class MockGitServer implements Closeable {
                 try (OutputStream out = he.getResponseBody()) {
                     up.upload(he.getRequestBody(), out, null);
                 }
+            } else if ("/git-receive-pack".equals(rest) && "POST".equals(he.getRequestMethod())) {
+                if (!checkScopes(he, auth, true)) return;
+                he.getResponseHeaders().set("Content-Type", "application/x-git-receive-pack-result");
+                he.getResponseHeaders().set("Cache-Control", "no-cache");
+                he.sendResponseHeaders(200, 0);
+                ReceivePack rp = new ReceivePack(repo);
+                rp.setBiDirectionalPipe(false);
+                try (OutputStream out = he.getResponseBody()) {
+                    rp.receive(he.getRequestBody(), out, null);
+                }
             } else {
                 sendStatus(he, 404);
             }
         }
+    }
+
+    /**
+     * Checks that a scoped token (non-empty {@code scopes} claim) permits the requested operation.
+     * Unrestricted tokens (empty scopes) are always allowed.
+     *
+     * <p>Per the Origin API: {@code repository:metadata:read} is always present; read operations
+     * additionally require {@code repository:contents:read}; write operations require
+     * {@code repository:contents:write} (which implicitly grants {@code :read}).
+     *
+     * @param write {@code true} for push (receive-pack), {@code false} for fetch (upload-pack)
+     * @return {@code true} if access is permitted; {@code false} if a 403 was already sent
+     */
+    private boolean checkScopes(HttpExchange he, LastAuth auth, boolean write) throws IOException {
+        List<String> scopes = auth.scopes();
+        if (scopes.isEmpty()) return true; // unrestricted token: allow all operations
+        if (!scopes.contains("repository:metadata:read")) {
+            LOGGER.warning("Token scopes " + scopes + " missing repository:metadata:read");
+            sendStatus(he, 403);
+            return false;
+        }
+        if (write) {
+            if (!scopes.contains("repository:contents:write")) {
+                LOGGER.warning("Token scopes " + scopes + " missing repository:contents:write for push");
+                sendStatus(he, 403);
+                return false;
+            }
+        } else {
+            // contents:write implicitly grants contents:read
+            if (!scopes.contains("repository:contents:read") && !scopes.contains("repository:contents:write")) {
+                LOGGER.warning("Token scopes " + scopes + " missing repository:contents:read for fetch");
+                sendStatus(he, 403);
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
