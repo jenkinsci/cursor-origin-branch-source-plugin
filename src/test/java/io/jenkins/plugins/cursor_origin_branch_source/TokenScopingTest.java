@@ -35,7 +35,6 @@ import org.jenkinsci.plugins.workflow.libs.SCMSourceRetriever;
 import org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject;
 import org.junit.jupiter.api.AutoClose;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.jvnet.hudson.test.LogRecorder;
 
@@ -168,7 +167,6 @@ class TokenScopingTest extends MockOriginServerTestBase {
      * clone need not be scoped to any specific repo — controller-side library retrieval is
      * intentionally unrestricted.
      */
-    @Disabled("TODO unclear how to differentiate library clone on controller from withCredentials without new API")
     @Test
     void libraryCloneOnControllerUsesUnrestrictedToken() throws Exception {
         MockOriginServer.MockRepo libRepo = mockServer.addRepo(OWNER, "lib-repo", "main");
