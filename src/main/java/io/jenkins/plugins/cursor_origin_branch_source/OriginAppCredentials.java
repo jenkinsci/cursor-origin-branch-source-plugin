@@ -49,7 +49,7 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
     private final Secret privateKey;
     private boolean unrestricted;
 
-    private record Repo(String repoOwner, String repository) implements Serializable {}
+    record Repo(String repoOwner, String repository) implements Serializable {}
 
     @CheckForNull
     Repo repo;
