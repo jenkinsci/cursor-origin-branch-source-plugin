@@ -69,7 +69,7 @@ class OriginAppCredentialsLiveTest {
     @Test
     void appAuthCanReadRepoContents() throws Exception {
         String token = OriginAppCredentials.doMintToken(
-                appId, installationId, Files.readString(Path.of(pkFile)), "controller");
+                appId, installationId, Files.readString(Path.of(pkFile)), null, "controller");
 
         OriginServiceApi api = OriginAppCredentials.apiWithToken(token);
 
