@@ -80,7 +80,7 @@
     <dependency>
       <groupId>org.jenkins-ci.plugins.workflow</groupId>
       <artifactId>workflow-multibranch</artifactId>
-      <!-- TOOD make optional -->
+      <optional>true</optional>
     </dependency>
     <dependency>
       <!-- Unclear if this is important. Consider openApiNullable=false -->

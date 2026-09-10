@@ -9,6 +9,8 @@ import com.cloudbees.plugins.credentials.impl.BaseStandardCredentials;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import hudson.Extension;
+import hudson.ExtensionList;
+import hudson.ExtensionPoint;
 import hudson.model.Run;
 import hudson.plugins.git.GitSCM;
 import hudson.plugins.git.UserRemoteConfig;
@@ -32,9 +34,11 @@ import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import jenkins.security.SlaveToMasterCallable;
 import jenkins.util.JenkinsJVM;
+import org.jenkinsci.plugins.variant.OptionalExtension;
 import org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.multibranch.BranchJobProperty;
+import org.jenkinsci.plugins.workflow.multibranch.SCMVar;
 import org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
@@ -119,41 +123,57 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
         if (unrestricted) {
             return this;
         }
-        var job = build.getParent();
-        var property = job.getProperty(BranchJobProperty.class);
-        if (property != null) {
-            var branch = property.getBranch();
-            if (job.getParent() instanceof WorkflowMultiBranchProject workflowMultiBranchProject
-                    && workflowMultiBranchProject.getSCMSource(branch.getSourceId()) instanceof OriginSCMSource src) {
-                var r = new Repo(src.getRepoOwner(), src.getRepository());
+        for (var contextualizer : ExtensionList.lookup(Contextualizer.class)) {
+            var r = contextualizer.repoOf(build);
+            if (r != null) {
                 LOGGER.fine(() -> "found " + r + " in " + build);
-                return cloneWithRepository(r);
-            }
-        } else if (job instanceof WorkflowJob workflowJob
-                && workflowJob.getDefinition() instanceof CpsScmFlowDefinition cpsScmFlowDefinition
-                && cpsScmFlowDefinition.getScm() instanceof GitSCM scm) {
-            var urls = scm.getUserRemoteConfigs().stream()
-                    .map(UserRemoteConfig::getUrl)
-                    .toList();
-            LOGGER.fine(() -> "inspecting " + urls);
-            if (urls.size() == 1) {
-                var matcher = Pattern.compile("\\Q" + OriginSCMSource.GIT_BASE_URL + "\\E/([^/]+)/([^/]+?)(?:[.]git)?")
-                        .matcher(urls.get(0));
-                if (matcher.matches()) {
-                    var r = new Repo(matcher.group(1), matcher.group(2));
-                    LOGGER.fine(() -> "found " + r + " in " + build);
-                    return cloneWithRepository(r);
-                }
+                var clone = new OriginAppCredentials(
+                        getScope(), getId(), getDescription(), appId, installationId, privateKey);
+                clone.repo = r;
+                return clone;
             }
         }
         LOGGER.fine(() -> "found nothing for " + build);
         return this;
     }
 
-    private OriginAppCredentials cloneWithRepository(Repo repo) {
-        var clone = new OriginAppCredentials(getScope(), getId(), getDescription(), appId, installationId, privateKey);
-        clone.repo = repo;
-        return clone;
+    public interface Contextualizer extends ExtensionPoint {
+        @CheckForNull
+        Repo repoOf(Run<?, ?> build);
+    }
+
+    /** @see SCMVar */
+    @OptionalExtension(requirePlugins = "workflow-multibranch")
+    public static final class SCMVarContextualizer implements Contextualizer {
+        @Override
+        public Repo repoOf(Run<?, ?> build) {
+            var job = build.getParent();
+            var property = job.getProperty(BranchJobProperty.class);
+            if (property != null) {
+                var branch = property.getBranch();
+                if (job.getParent() instanceof WorkflowMultiBranchProject workflowMultiBranchProject
+                        && workflowMultiBranchProject.getSCMSource(branch.getSourceId())
+                                instanceof OriginSCMSource src) {
+                    return new Repo(src.getRepoOwner(), src.getRepository());
+                }
+            } else if (job instanceof WorkflowJob workflowJob
+                    && workflowJob.getDefinition() instanceof CpsScmFlowDefinition cpsScmFlowDefinition
+                    && cpsScmFlowDefinition.getScm() instanceof GitSCM scm) {
+                var urls = scm.getUserRemoteConfigs().stream()
+                        .map(UserRemoteConfig::getUrl)
+                        .toList();
+                LOGGER.fine(() -> "inspecting " + urls);
+                if (urls.size() == 1) {
+                    var matcher = Pattern.compile(
+                                    "\\Q" + OriginSCMSource.GIT_BASE_URL + "\\E/([^/]+)/([^/]+?)(?:[.]git)?")
+                            .matcher(urls.get(0));
+                    if (matcher.matches()) {
+                        return new Repo(matcher.group(1), matcher.group(2));
+                    }
+                }
+            }
+            return null;
+        }
     }
 
     /** Mints a fresh installation access token by exchanging a JWT on the controller. */
