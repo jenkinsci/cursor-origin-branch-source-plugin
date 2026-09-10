@@ -87,19 +87,19 @@ public class OriginSCMNavigator extends SCMNavigator {
     @NonNull
     @Override
     protected String id() {
-        return CursorOriginAppCredentials.API_BASE_URI + "::" + repoOwner;
+        return OriginAppCredentials.API_BASE_URI + "::" + repoOwner;
     }
 
     @Override
     public void visitSources(@NonNull SCMSourceObserver observer) throws IOException, InterruptedException {
-        CursorOriginAppCredentials creds = CredentialsProvider.findCredentialByIdInItem(
-                credentialsId, CursorOriginAppCredentials.class, observer.getContext(), ACL.SYSTEM2, null);
+        OriginAppCredentials creds = CredentialsProvider.findCredentialByIdInItem(
+                credentialsId, OriginAppCredentials.class, observer.getContext(), ACL.SYSTEM2, null);
         if (creds == null) {
             throw new IOException("No credentials found with id: " + credentialsId);
         }
 
         TaskListener listener = observer.getListener();
-        OriginServiceApi api = CursorOriginAppCredentials.apiWithToken(creds.mintToken());
+        OriginServiceApi api = OriginAppCredentials.apiWithToken(creds.mintToken());
         Pattern namePattern = Pattern.compile(pattern);
 
         List<SCMSourceTrait> sourceTraits = new ArrayList<>();
@@ -168,7 +168,7 @@ public class OriginSCMNavigator extends SCMNavigator {
             return result.includeMatchingAs(
                             ACL.SYSTEM2,
                             item,
-                            CursorOriginAppCredentials.class,
+                            OriginAppCredentials.class,
                             Collections.emptyList(),
                             CredentialsMatchers.always())
                     .includeCurrentValue(credentialsId);

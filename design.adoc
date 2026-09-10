@@ -27,6 +27,14 @@ from https://cursor.com[Cursor Origin] repositories.
 * Avatars.
 * Personal access tokens (only `CursorOriginAppCredentials`).
 
+=== Delivered (post-v1)
+
+* PR job display names: `retrieveActions(SCMHead, …)` fetches PR metadata via
+  `GET /v1/origin/repos/{owner}/{repo}/pulls/{number}` and returns an `ObjectMetadataAction`
+  carrying the PR title (branch-api renders it as "Title (#N)" in the UI).
+* Separate Branches / Pull Requests tabs: `DescriptorImpl.createCategories()` declares
+  `UncategorizedSCMHeadCategory` ("Branches") and `ChangeRequestSCMHeadCategory` ("Pull Requests").
+
 == Authentication
 
 `CursorOriginAppCredentials` already exists.
@@ -316,6 +324,8 @@ that simulates the Origin REST API with real JWT-based authentication:
 . **`organizationFolderDiscoversTwoRepos`** — `OrganizationFolder` + `OriginSCMNavigator` scans two repos → two multibranch projects.
 . **`prHeadBranchExcludedFromBranchDiscovery`** — only branch is also PR head → PR appears, branch does not.
 . **`noJenkinsfileProducesNoJobs`** — repo without Jenkinsfile → `OriginSCMProbe` returns NONEXISTENT → no jobs.
+. **`prDisplayNameEqualsPrTitle`** — PR title from API is reflected in the job display name (via `ObjectMetadataAction`).
+. **`separateBranchesAndPullRequestsTabs`** — multibranch project exposes both a "Branches" and a "Pull Requests" view.
 
 === Checks tests
 

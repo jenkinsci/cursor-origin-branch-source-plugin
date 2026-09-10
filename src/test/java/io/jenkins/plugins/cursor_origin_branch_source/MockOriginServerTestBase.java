@@ -42,7 +42,7 @@ public abstract class MockOriginServerTestBase {
     protected MockOriginServer mockServer;
 
     private String savedBaseUri;
-    private CursorOriginAppCredentials credentials;
+    private OriginAppCredentials credentials;
 
     @BeforeEach
     protected void setUp(JenkinsRule r) throws Exception {
@@ -54,10 +54,10 @@ public abstract class MockOriginServerTestBase {
         mockServer.registerApp(APP_ID, appKeyPair.getPublic());
         String mockUrl = mockServer.start();
 
-        savedBaseUri = CursorOriginAppCredentials.API_BASE_URI;
-        CursorOriginAppCredentials.API_BASE_URI = mockUrl;
+        savedBaseUri = OriginAppCredentials.API_BASE_URI;
+        OriginAppCredentials.API_BASE_URI = mockUrl;
 
-        credentials = new CursorOriginAppCredentials(
+        credentials = new OriginAppCredentials(
                 CredentialsScope.GLOBAL,
                 CREDS_ID,
                 "Test app credentials",
@@ -72,13 +72,13 @@ public abstract class MockOriginServerTestBase {
     }
 
     /** The app credentials registered in the Jenkins credentials store under {@link #CREDS_ID}. */
-    protected CursorOriginAppCredentials credentials() {
+    protected OriginAppCredentials credentials() {
         return credentials;
     }
 
     @AfterEach
     protected void tearDown() {
-        CursorOriginAppCredentials.API_BASE_URI = savedBaseUri;
+        OriginAppCredentials.API_BASE_URI = savedBaseUri;
     }
 
     protected static void showIndexing(ComputedFolder<?> folder) throws Exception {

@@ -75,7 +75,8 @@ public class MockOriginServer implements Closeable {
 
     // ── in-memory data model ────────────────────────────────────────────────
 
-    public record MockPR(int number, String headBranch, String headSha, String baseBranch, String baseSha) {}
+    public record MockPR(
+            int number, String headBranch, String headSha, String baseBranch, String baseSha, String title) {}
 
     public static class MockBranch {
         final String name;
@@ -106,8 +107,12 @@ public class MockOriginServer implements Closeable {
         }
 
         public MockRepo pr(int number, String headBranch, String headSha, String baseBranch, String baseSha) {
-            repo.pullRequests.add(new MockPR(number, headBranch, headSha, baseBranch, baseSha));
-            return repo;
+            return pr(number, headBranch, headSha, baseBranch, baseSha, "PR #" + number);
+        }
+
+        public MockRepo pr(
+                int number, String headBranch, String headSha, String baseBranch, String baseSha, String title) {
+            return repo.pr(number, headBranch, headSha, baseBranch, baseSha, title);
         }
     }
 
@@ -242,7 +247,12 @@ public class MockOriginServer implements Closeable {
         }
 
         public MockRepo pr(int number, String headBranch, String headSha, String baseBranch, String baseSha) {
-            pullRequests.add(new MockPR(number, headBranch, headSha, baseBranch, baseSha));
+            return pr(number, headBranch, headSha, baseBranch, baseSha, "PR #" + number);
+        }
+
+        public MockRepo pr(
+                int number, String headBranch, String headSha, String baseBranch, String baseSha, String title) {
+            pullRequests.add(new MockPR(number, headBranch, headSha, baseBranch, baseSha, title));
             return this;
         }
     }
@@ -401,6 +411,14 @@ public class MockOriginServer implements Closeable {
                 handleListBranches(he, repo);
             } else if (rest.equals("/pulls")) {
                 handleListPulls(he, repo);
+            } else if (rest.startsWith("/pulls/")) {
+                String numberStr = rest.substring("/pulls/".length());
+                try {
+                    int number = Integer.parseInt(numberStr);
+                    handleGetPullRequest(he, repo, number);
+                } catch (NumberFormatException e) {
+                    sendError(he, 404, "invalid PR number: " + numberStr);
+                }
             } else if (rest.equals("/contents")) {
                 handleGetContents(he, repo);
             } else if (rest.equals("/check-runs") && "POST".equals(method)) {
@@ -605,7 +623,7 @@ public class MockOriginServer implements Closeable {
                 gen.writeStartObject();
                 gen.writeStringField("number", String.valueOf(pr.number()));
                 gen.writeStringField("state", "open");
-                gen.writeStringField("title", "PR #" + pr.number());
+                gen.writeStringField("title", pr.title());
                 gen.writeObjectFieldStart("head");
                 gen.writeStringField("ref", pr.headBranch());
                 gen.writeStringField("sha", pr.headSha());
@@ -753,6 +771,30 @@ public class MockOriginServer implements Closeable {
             gen.writeEndArray();
             gen.writeEndObject();
         });
+    }
+
+    private void handleGetPullRequest(HttpExchange he, MockRepo repo, int number) throws IOException {
+        for (MockPR pr : repo.pullRequests) {
+            if (pr.number() == number) {
+                sendJson(he, 200, gen -> {
+                    gen.writeStartObject();
+                    gen.writeStringField("number", String.valueOf(pr.number()));
+                    gen.writeStringField("state", "open");
+                    gen.writeStringField("title", pr.title());
+                    gen.writeObjectFieldStart("head");
+                    gen.writeStringField("ref", pr.headBranch());
+                    gen.writeStringField("sha", pr.headSha());
+                    gen.writeEndObject();
+                    gen.writeObjectFieldStart("base");
+                    gen.writeStringField("ref", pr.baseBranch());
+                    gen.writeStringField("sha", pr.baseSha());
+                    gen.writeEndObject();
+                    gen.writeEndObject();
+                });
+                return;
+            }
+        }
+        sendError(he, 404, "PR not found: " + number);
     }
 
     private void handleGetContents(HttpExchange he, MockRepo repo) throws IOException {

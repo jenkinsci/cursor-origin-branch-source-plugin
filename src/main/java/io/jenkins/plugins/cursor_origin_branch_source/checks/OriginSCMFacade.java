@@ -6,7 +6,7 @@ import edu.umd.cs.findbugs.annotations.NonNull;
 import hudson.model.Job;
 import hudson.model.Run;
 import hudson.security.ACL;
-import io.jenkins.plugins.cursor_origin_branch_source.CursorOriginAppCredentials;
+import io.jenkins.plugins.cursor_origin_branch_source.OriginAppCredentials;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginPullRequestSCMRevision;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginSCMSource;
 import java.util.Collections;
@@ -60,11 +60,11 @@ class OriginSCMFacade {
     }
 
     /** Looks up the Cursor Origin app credentials that {@code job}'s source is configured with. */
-    Optional<CursorOriginAppCredentials> findCredentials(@NonNull Job<?, ?> job, @CheckForNull String credentialsId) {
+    Optional<OriginAppCredentials> findCredentials(@NonNull Job<?, ?> job, @CheckForNull String credentialsId) {
         if (credentialsId == null || credentialsId.isBlank()) {
             return Optional.empty();
         }
         return Optional.ofNullable(CredentialsProvider.findCredentialByIdInItem(
-                credentialsId, CursorOriginAppCredentials.class, job, ACL.SYSTEM2, Collections.emptyList()));
+                credentialsId, OriginAppCredentials.class, job, ACL.SYSTEM2, Collections.emptyList()));
     }
 }

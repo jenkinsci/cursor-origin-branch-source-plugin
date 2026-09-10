@@ -88,13 +88,6 @@
       <version>0.2.11</version>
     </dependency>
     <dependency>
-      <!-- Unfortunately the generator wants to use javax.annotation. Check annotationLibrary=none -->
-      <groupId>com.google.code.findbugs</groupId>
-      <artifactId>annotations</artifactId>
-      <version>3.0.1</version>
-      <scope>provided</scope>
-    </dependency>
-    <dependency>
       <groupId>org.awaitility</groupId>
       <artifactId>awaitility</artifactId>
       <version>4.3.0</version>
@@ -162,6 +155,11 @@
               <modelPackage>io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model</modelPackage>
               <!-- https://github.com/OpenAPITools/openapi-generator/issues/5800 -->
               <supportingFilesToGenerate>ApiResponse.java,ProgressResponseBody.java,GzipRequestInterceptor.java,ProgressRequestBody.java,JSON.java,ServerVariable.java,StringUtil.java,Configuration.java,ApiClient.java,ApiCallback.java,ServerConfiguration.java,ApiException.java,Pair.java,ApiKeyAuth.java,HttpBasicAuth.java,HttpBearerAuth.java,Authentication.java,RFC3339JavaTimeModule.java,RFC3339DateFormat.java,RFC3339InstantDeserializer.java</supportingFilesToGenerate>
+              <!-- Overrides nullable_var_annotations.mustache with an empty file to suppress
+                   @javax.annotation.Nonnull/Nullable on generated code: the Cursor Origin spec
+                   does not declare required fields on response schemas, so every getter would
+                   otherwise be @CheckForNull, flooding SpotBugs with false positives. -->
+              <templateDirectory>${project.basedir}/src/main/openapi/templates</templateDirectory>
               <configOptions>
                 <sourceFolder>.</sourceFolder>
                 <useJackson3>true</useJackson3>

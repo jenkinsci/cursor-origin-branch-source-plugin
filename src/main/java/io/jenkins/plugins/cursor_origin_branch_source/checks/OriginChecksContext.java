@@ -5,7 +5,7 @@ import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import hudson.model.Job;
 import hudson.model.Run;
-import io.jenkins.plugins.cursor_origin_branch_source.CursorOriginAppCredentials;
+import io.jenkins.plugins.cursor_origin_branch_source.OriginAppCredentials;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginSCMSource;
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.api.OriginServiceApi;
 import java.util.Optional;
@@ -144,7 +144,7 @@ class OriginChecksContext {
                 .map(OriginSCMSource::getCredentialsId)
                 .orElseThrow(() ->
                         new IllegalStateException("No Cursor Origin SCM source found for job: " + job.getFullName()));
-        CursorOriginAppCredentials credentials = scmFacade
+        OriginAppCredentials credentials = scmFacade
                 .findCredentials(job, credentialsId)
                 .orElseThrow(() ->
                         new IllegalStateException("No Cursor Origin app credentials found with id: " + credentialsId));

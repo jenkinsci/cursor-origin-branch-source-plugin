@@ -12,7 +12,7 @@ import static org.mockito.Mockito.when;
 import edu.hm.hafner.util.FilteredLog;
 import hudson.model.Job;
 import hudson.model.Run;
-import io.jenkins.plugins.cursor_origin_branch_source.CursorOriginAppCredentials;
+import io.jenkins.plugins.cursor_origin_branch_source.OriginAppCredentials;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginPullRequestSCMHead;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginPullRequestSCMRevision;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginSCMSource;
@@ -159,8 +159,7 @@ class OriginChecksContextTest {
         Job job = mockJob();
         Run run = mockRun(job);
         OriginSCMFacade facade = mockFacadeWithSource(job, createSource());
-        when(facade.findCredentials(job, CREDENTIALS_ID))
-                .thenReturn(Optional.of(mock(CursorOriginAppCredentials.class)));
+        when(facade.findCredentials(job, CREDENTIALS_ID)).thenReturn(Optional.of(mock(OriginAppCredentials.class)));
         FilteredLog logger = new FilteredLog("errors:");
 
         assertThat(OriginChecksContext.fromRun(run, URL, facade).isValid(logger), is(false));
@@ -177,8 +176,7 @@ class OriginChecksContextTest {
         OriginSCMFacade facade = mockFacadeWithSource(job, source);
         when(facade.findRevision(source, run))
                 .thenReturn(Optional.of(new AbstractGitSCMSource.SCMRevisionImpl(head, BRANCH_SHA)));
-        when(facade.findCredentials(job, CREDENTIALS_ID))
-                .thenReturn(Optional.of(mock(CursorOriginAppCredentials.class)));
+        when(facade.findCredentials(job, CREDENTIALS_ID)).thenReturn(Optional.of(mock(OriginAppCredentials.class)));
         FilteredLog logger = new FilteredLog("errors:");
 
         assertThat(OriginChecksContext.fromRun(run, URL, facade).isValid(logger), is(true));

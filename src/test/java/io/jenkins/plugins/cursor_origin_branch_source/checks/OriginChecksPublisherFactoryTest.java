@@ -15,7 +15,7 @@ import hudson.model.Run;
 import hudson.model.TaskListener;
 import hudson.util.StreamTaskListener;
 import io.jenkins.plugins.checks.api.ChecksPublisher;
-import io.jenkins.plugins.cursor_origin_branch_source.CursorOriginAppCredentials;
+import io.jenkins.plugins.cursor_origin_branch_source.OriginAppCredentials;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginSCMSource;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
@@ -41,8 +41,7 @@ class OriginChecksPublisherFactoryTest {
         OriginSCMFacade facade = mockFacade(job, source);
         when(facade.findRevision(source, run))
                 .thenReturn(Optional.of(new AbstractGitSCMSource.SCMRevisionImpl(new SCMHead("main"), SHA)));
-        when(facade.findCredentials(job, CREDENTIALS_ID))
-                .thenReturn(Optional.of(mock(CursorOriginAppCredentials.class)));
+        when(facade.findCredentials(job, CREDENTIALS_ID)).thenReturn(Optional.of(mock(OriginAppCredentials.class)));
 
         Optional<ChecksPublisher> publisher = createFactory(facade).createPublisher(run, listener());
 

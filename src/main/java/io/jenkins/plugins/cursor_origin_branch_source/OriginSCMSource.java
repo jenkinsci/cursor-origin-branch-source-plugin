@@ -18,6 +18,7 @@ import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model.Branc
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model.GitRef;
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model.ListBranchesResponse;
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model.ListPullRequestsResponse;
+import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model.OriginActor;
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model.PullRequest;
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model.Repo;
 import java.io.IOException;
@@ -33,14 +34,19 @@ import jenkins.plugins.git.AbstractGitSCMSource;
 import jenkins.plugins.git.GitRemoteHeadRefAction;
 import jenkins.plugins.git.GitSCMBuilder;
 import jenkins.scm.api.SCMHead;
+import jenkins.scm.api.SCMHeadCategory;
 import jenkins.scm.api.SCMHeadEvent;
 import jenkins.scm.api.SCMHeadObserver;
 import jenkins.scm.api.SCMRevision;
 import jenkins.scm.api.SCMSourceCriteria;
 import jenkins.scm.api.SCMSourceDescriptor;
 import jenkins.scm.api.SCMSourceEvent;
+import jenkins.scm.api.metadata.ContributorMetadataAction;
+import jenkins.scm.api.metadata.ObjectMetadataAction;
 import jenkins.scm.api.trait.SCMSourceTrait;
 import jenkins.scm.api.trait.SCMSourceTraitDescriptor;
+import jenkins.scm.impl.ChangeRequestSCMHeadCategory;
+import jenkins.scm.impl.UncategorizedSCMHeadCategory;
 import org.jenkinsci.Symbol;
 import org.kohsuke.stapler.AncestorInPath;
 import org.kohsuke.stapler.DataBoundConstructor;
@@ -97,13 +103,13 @@ public class OriginSCMSource extends AbstractGitSCMSource {
         this.traits = new ArrayList<>(traits != null ? traits : Collections.emptyList());
     }
 
-    private CursorOriginAppCredentials lookupCredentials() {
+    private OriginAppCredentials lookupCredentials() {
         return lookupCredentials(getOwner());
     }
 
-    private CursorOriginAppCredentials lookupCredentials(@CheckForNull Item context) {
+    private OriginAppCredentials lookupCredentials(@CheckForNull Item context) {
         return CredentialsProvider.findCredentialByIdInItem(
-                credentialsId, CursorOriginAppCredentials.class, context, ACL.SYSTEM2, null);
+                credentialsId, OriginAppCredentials.class, context, ACL.SYSTEM2, null);
     }
 
     @Override
@@ -114,13 +120,13 @@ public class OriginSCMSource extends AbstractGitSCMSource {
             @NonNull TaskListener listener)
             throws IOException, InterruptedException {
 
-        CursorOriginAppCredentials creds = lookupCredentials();
+        OriginAppCredentials creds = lookupCredentials();
         if (creds == null) {
             throw new IOException("No credentials found with id: " + credentialsId);
         }
         listener.getLogger()
                 .println("Connecting to Cursor Origin using app credentials: " + CredentialsNameProvider.name(creds));
-        OriginServiceApi api = CursorOriginAppCredentials.apiWithToken(creds.mintToken());
+        OriginServiceApi api = OriginAppCredentials.apiWithToken(creds.mintToken());
 
         try (OriginSCMSourceRequest request = new OriginSCMSourceContext(criteria, observer)
                 .withTraits(traits)
@@ -184,11 +190,11 @@ public class OriginSCMSource extends AbstractGitSCMSource {
     @Override
     protected Set<String> retrieveRevisions(@NonNull TaskListener listener, @CheckForNull Item context)
             throws IOException, InterruptedException {
-        CursorOriginAppCredentials creds = lookupCredentials(context);
+        OriginAppCredentials creds = lookupCredentials(context);
         if (creds == null) {
             throw new IOException("No credentials found with id: " + credentialsId);
         }
-        OriginServiceApi api = CursorOriginAppCredentials.apiWithToken(creds.mintToken());
+        OriginServiceApi api = OriginAppCredentials.apiWithToken(creds.mintToken());
         try {
             ListBranchesResponse resp = api.originServiceListBranches(repoOwner, repository, null, null);
             Set<String> revisions = new HashSet<>();
@@ -205,11 +211,11 @@ public class OriginSCMSource extends AbstractGitSCMSource {
     protected SCMRevision retrieve(
             @NonNull String thingName, @NonNull TaskListener listener, @CheckForNull Item context)
             throws IOException, InterruptedException {
-        CursorOriginAppCredentials creds = lookupCredentials(context);
+        OriginAppCredentials creds = lookupCredentials(context);
         if (creds == null) {
             throw new IOException("No credentials found with id: " + credentialsId);
         }
-        OriginServiceApi api = CursorOriginAppCredentials.apiWithToken(creds.mintToken());
+        OriginServiceApi api = OriginAppCredentials.apiWithToken(creds.mintToken());
         try {
             GitRef ref = api.originServiceGetGitRef(repoOwner, repository, "heads/" + thingName);
             return new AbstractGitSCMSource.SCMRevisionImpl(
@@ -225,11 +231,11 @@ public class OriginSCMSource extends AbstractGitSCMSource {
     @Override
     protected SCMRevision retrieve(@NonNull SCMHead head, @NonNull TaskListener listener)
             throws IOException, InterruptedException {
-        CursorOriginAppCredentials creds = lookupCredentials();
+        OriginAppCredentials creds = lookupCredentials();
         if (creds == null) {
             throw new IOException("No credentials found with id: " + credentialsId);
         }
-        OriginServiceApi api = CursorOriginAppCredentials.apiWithToken(creds.mintToken());
+        OriginServiceApi api = OriginAppCredentials.apiWithToken(creds.mintToken());
         try {
             if (head instanceof OriginPullRequestSCMHead prHead) {
                 ListPullRequestsResponse resp =
@@ -256,16 +262,48 @@ public class OriginSCMSource extends AbstractGitSCMSource {
         }
     }
 
-    @SuppressWarnings("rawtypes")
+    @NonNull
     @Override
-    protected List<Action> retrieveActions(@CheckForNull SCMSourceEvent event, @NonNull TaskListener listener)
+    protected List<Action> retrieveActions(
+            @NonNull SCMHead head, @CheckForNull SCMHeadEvent event, @NonNull TaskListener listener)
             throws IOException, InterruptedException {
-        CursorOriginAppCredentials creds = lookupCredentials();
+        if (!(head instanceof OriginPullRequestSCMHead prHead)) {
+            return Collections.emptyList();
+        }
+        OriginAppCredentials creds = lookupCredentials();
         if (creds == null) {
             return Collections.emptyList();
         }
         try {
-            OriginServiceApi api = CursorOriginAppCredentials.apiWithToken(creds.mintToken());
+            OriginServiceApi api = OriginAppCredentials.apiWithToken(creds.mintToken());
+            PullRequest pr = api.originServiceGetPullRequest(repoOwner, repository, prHead.getNumber());
+            List<Action> actions = new ArrayList<>();
+            actions.add(new ObjectMetadataAction(pr.getTitle(), pr.getBody(), null));
+            OriginActor author = pr.getAuthor();
+            if (author != null && author.getUser() != null) {
+                String id = author.getUser().getId();
+                String email = author.getUser().getEmail();
+                actions.add(new ContributorMetadataAction(id, id, email));
+            }
+            return actions;
+        } catch (ApiException e) {
+            listener.getLogger()
+                    .println("Could not retrieve PR metadata for " + prHead.getName() + ": " + e.getMessage());
+            LOGGER.log(Level.WARNING, "Failed to retrieve PR metadata for " + repoOwner + "/" + repository, e);
+            return Collections.emptyList();
+        }
+    }
+
+    @SuppressWarnings("rawtypes")
+    @Override
+    protected List<Action> retrieveActions(@CheckForNull SCMSourceEvent event, @NonNull TaskListener listener)
+            throws IOException, InterruptedException {
+        OriginAppCredentials creds = lookupCredentials();
+        if (creds == null) {
+            return Collections.emptyList();
+        }
+        try {
+            OriginServiceApi api = OriginAppCredentials.apiWithToken(creds.mintToken());
             Repo repo = api.originServiceGetRepo(repoOwner, repository);
             String defaultBranch = repo.getDefaultBranch();
             if (defaultBranch != null && !defaultBranch.isBlank()) {
@@ -299,6 +337,14 @@ public class OriginSCMSource extends AbstractGitSCMSource {
             return "Cursor Origin";
         }
 
+        @Override
+        protected SCMHeadCategory[] createCategories() {
+            return new SCMHeadCategory[] {
+                new UncategorizedSCMHeadCategory(Messages._OriginSCMSource_BranchesCategory()),
+                new ChangeRequestSCMHeadCategory(Messages._OriginSCMSource_PullRequestsCategory()),
+            };
+        }
+
         public List<SCMSourceTraitDescriptor> getTraitDescriptors() {
             return SCMSourceTrait._for(this, OriginSCMSourceContext.class, null);
         }
@@ -318,7 +364,7 @@ public class OriginSCMSource extends AbstractGitSCMSource {
             return result.includeMatchingAs(
                             ACL.SYSTEM2,
                             item,
-                            CursorOriginAppCredentials.class,
+                            OriginAppCredentials.class,
                             Collections.emptyList(),
                             CredentialsMatchers.always())
                     .includeCurrentValue(credentialsId);
