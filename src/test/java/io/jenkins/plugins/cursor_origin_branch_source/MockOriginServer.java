@@ -145,7 +145,7 @@ class MockOriginServer implements Closeable {
     /** appId → the scopes this app is approved for at installation time */
     private final Map<String, List<String>> appDefaultScopes = new ConcurrentHashMap<>();
     /** installationId → repo IDs this installation can access; absent means unrestricted */
-    private final Map<String, List<String>> installationAccessibleRepoIds = new HashMap<>();
+    private final Map<String, List<String>> installationAccessibleRepoIds = new ConcurrentHashMap<>();
 
     /** key pair used to sign / verify access tokens */
     private final KeyPair serverKeyPair;
@@ -365,7 +365,9 @@ class MockOriginServer implements Closeable {
                     }
                 }
             } catch (Exception e) {
-                LOGGER.warning("Failed to parse token exchange body: " + e.getMessage());
+                LOGGER.log(Level.WARNING, "Failed to parse token exchange body", e);
+                sendError(he, 400, "invalid request body: " + e.getMessage());
+                return;
             }
         }
 

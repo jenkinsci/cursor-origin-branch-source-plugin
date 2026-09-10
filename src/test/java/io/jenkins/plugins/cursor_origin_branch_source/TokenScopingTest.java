@@ -197,11 +197,11 @@ class TokenScopingTest extends MockOriginServerTestBase {
                         "repository:checks:write"));
     }
 
-    // ── 4.a: withGit unrestricted credential ────────────────────────────────
+    // ── 4.a: gitUsernamePassword unrestricted credential ────────────────────
 
     /**
-     * Scenario 4.a: {@code withGit} (via {@code gitUsernamePassword} binding) running a git
-     * clone succeeds when the credential is unrestricted.
+     * Scenario 4.a: {@code withCredentials([gitUsernamePassword(...)])} running a git clone
+     * succeeds when the credential is unrestricted.
      */
     @Test
     void withGitUnrestrictedSucceeds() throws Exception {
@@ -312,11 +312,11 @@ class TokenScopingTest extends MockOriginServerTestBase {
         r.assertLogContains("Cannot use restricted credentials", build);
     }
 
-    // ── 4 (restricted): withGit restricted credential ───────────────────────
+    // ── 4 (restricted): gitUsernamePassword restricted credential ───────────
 
     /**
      * Scenario 4 (restricted): using a restricted {@code OriginAppCredentials} in a
-     * {@code withGit} step must also fail immediately.
+     * {@code withCredentials([gitUsernamePassword(...)])} step must also fail immediately.
      */
     @Test
     void withGitRestrictedThrows() throws Exception {
