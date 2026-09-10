@@ -5,6 +5,9 @@ import com.cloudbees.plugins.credentials.CredentialsNameProvider;
 import com.cloudbees.plugins.credentials.CredentialsScope;
 import com.cloudbees.plugins.credentials.CredentialsSnapshotTaker;
 import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
+import com.cloudbees.plugins.credentials.domains.DomainRequirement;
+import com.cloudbees.plugins.credentials.domains.PathRequirement;
+import com.cloudbees.plugins.credentials.domains.URIRequirementBuilder;
 import com.cloudbees.plugins.credentials.impl.BaseStandardCredentials;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
@@ -119,12 +122,12 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
     }
 
     @Override
-    public OriginAppCredentials forRun(Run<?, ?> build) {
+    public OriginAppCredentials forContext(Run<?, ?> build, List<DomainRequirement> domainRequirements) {
         if (unrestricted) {
             return this;
         }
         for (var contextualizer : ExtensionList.lookup(Contextualizer.class)) {
-            var r = contextualizer.repoOf(build);
+            var r = contextualizer.repoOf(build, domainRequirements);
             if (r != null) {
                 LOGGER.fine(() -> "found " + r + " in " + build);
                 var clone = new OriginAppCredentials(
@@ -139,14 +142,37 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
 
     public interface Contextualizer extends ExtensionPoint {
         @CheckForNull
-        Repo repoOf(Run<?, ?> build);
+        Repo repoOf(Run<?, ?> build, List<DomainRequirement> domainRequirements);
+    }
+
+    /**
+     * @see GitSCM#lookupScanCredentials
+     * @see URIRequirementBuilder
+     */
+    @Extension(ordinal = 200)
+    public static final class GitSCMContextualizer implements Contextualizer {
+        @Override
+        public Repo repoOf(Run<?, ?> build, List<DomainRequirement> domainRequirements) {
+            for (var dr : domainRequirements) {
+                if (dr instanceof PathRequirement pr) {
+                    var path = pr.getPath();
+                    LOGGER.fine(() -> "inspecting " + path);
+                    var matcher = Pattern.compile("/([^/]+)/([^/]+?)(?:[.]git)?").matcher(path);
+                    if (matcher.matches()) {
+                        // TODO this should also verify SchemeRequirement + HostnameRequirement/HostnamePortRequirement
+                        return new Repo(matcher.group(1), matcher.group(2));
+                    }
+                }
+            }
+            return null;
+        }
     }
 
     /** @see SCMVar */
-    @OptionalExtension(requirePlugins = "workflow-multibranch")
+    @OptionalExtension(requirePlugins = "workflow-multibranch", ordinal = 100)
     public static final class SCMVarContextualizer implements Contextualizer {
         @Override
-        public Repo repoOf(Run<?, ?> build) {
+        public Repo repoOf(Run<?, ?> build, List<DomainRequirement> domainRequirements) {
             var job = build.getParent();
             var property = job.getProperty(BranchJobProperty.class);
             if (property != null) {
