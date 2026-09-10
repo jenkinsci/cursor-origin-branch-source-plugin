@@ -16,6 +16,11 @@ import org.jenkinsci.plugins.displayurlapi.DisplayURLProvider;
  *
  * <p>The checks API asks every registered factory in turn and uses the first one that claims the job,
  * so declining a job that is not Origin backed is part of the contract rather than an error.
+ *
+ * <p>Only the {@link Run} overload is implemented. The {@link Job} one, which the checks API uses to
+ * report a build as queued before it starts, is deliberately left to return nothing: the commit a
+ * check must be reported against only becomes known once the build records it, so there is nothing
+ * truthful to report that early.
  */
 @Extension
 public class OriginChecksPublisherFactory extends ChecksPublisherFactory {
@@ -34,17 +39,7 @@ public class OriginChecksPublisherFactory extends ChecksPublisherFactory {
 
     @Override
     protected Optional<ChecksPublisher> createPublisher(final Run<?, ?> run, final TaskListener listener) {
-        return createPublisher(
-                run.getParent(), listener, OriginChecksContext.fromRun(run, urlProvider.getRunURL(run), scmFacade));
-    }
-
-    @Override
-    protected Optional<ChecksPublisher> createPublisher(final Job<?, ?> job, final TaskListener listener) {
-        return createPublisher(job, listener, OriginChecksContext.fromJob(job, urlProvider.getJobURL(job), scmFacade));
-    }
-
-    private Optional<ChecksPublisher> createPublisher(
-            final Job<?, ?> job, final TaskListener listener, final OriginChecksContext context) {
+        OriginChecksContext context = OriginChecksContext.fromRun(run, urlProvider.getRunURL(run), scmFacade);
         FilteredLog causeLogger = new FilteredLog("Causes for no suitable checks publisher found: ");
         PluginLogger consoleLogger = new PluginLogger(listener.getLogger(), "Cursor Origin Checks");
         if (context.isValid(causeLogger)) {
@@ -52,7 +47,7 @@ public class OriginChecksPublisherFactory extends ChecksPublisherFactory {
         }
         // Declining a job that is not Origin backed is the contract, so there is nothing to explain; for
         // a job that is, always say why its checks could not be published.
-        if (scmFacade.findOriginSCMSource(job).isPresent()) {
+        if (scmFacade.findOriginSCMSource(run.getParent()).isPresent()) {
             consoleLogger.logEachLine(causeLogger.getErrorMessages());
         }
         return Optional.empty();

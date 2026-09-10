@@ -22,7 +22,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 import jenkins.plugins.git.AbstractGitSCMSource;
 import jenkins.scm.api.SCMHead;
-import jenkins.scm.api.SCMRevision;
 import org.jenkinsci.plugins.displayurlapi.DisplayURLProvider;
 import org.junit.jupiter.api.Test;
 
@@ -46,23 +45,6 @@ class OriginChecksPublisherFactoryTest {
                 .thenReturn(Optional.of(mock(CursorOriginAppCredentials.class)));
 
         Optional<ChecksPublisher> publisher = createFactory(facade).createPublisher(run, listener());
-
-        assertThat(publisher.orElseThrow(), is(instanceOf(OriginChecksPublisher.class)));
-    }
-
-    @Test
-    void createsAPublisherForAQueuedOriginBackedJob() {
-        Job job = mockJob();
-        OriginSCMSource source = createSource();
-        SCMHead head = new SCMHead("main");
-        OriginSCMFacade facade = mockFacade(job, source);
-        when(facade.findHead(job)).thenReturn(Optional.of(head));
-        when(facade.findRevision(source, head))
-                .thenReturn(Optional.of((SCMRevision) new AbstractGitSCMSource.SCMRevisionImpl(head, SHA)));
-        when(facade.findCredentials(job, CREDENTIALS_ID))
-                .thenReturn(Optional.of(mock(CursorOriginAppCredentials.class)));
-
-        Optional<ChecksPublisher> publisher = createFactory(facade).createPublisher(job, listener());
 
         assertThat(publisher.orElseThrow(), is(instanceOf(OriginChecksPublisher.class)));
     }

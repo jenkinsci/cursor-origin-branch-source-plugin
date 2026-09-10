@@ -9,26 +9,22 @@ import io.jenkins.plugins.cursor_origin_branch_source.CursorOriginAppCredentials
 import io.jenkins.plugins.cursor_origin_branch_source.OriginSCMSource;
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.api.OriginServiceApi;
 import java.util.Optional;
-import jenkins.scm.api.SCMHead;
-import jenkins.scm.api.SCMRevision;
 import jenkins.scm.api.SCMSourceOwner;
 
 /**
  * The Cursor Origin coordinates a check run is published with: which repository, which commit, which
- * credentials, and how the reported check relates to the Jenkins job that produced it.
+ * credentials, and how the reported check relates to the Jenkins build that produced it.
  *
- * <p>A context is created from either a {@link Run} (once a build exists) or a {@link Job} (while the
- * build is still queued and there is no run yet). Instances are cheap to create but resolving the head
- * SHA for the job-only case performs a remote call, so create them lazily and validate them with
+ * <p>A context always belongs to a build, and the commit it reports against is the one recorded on
+ * that build. There is deliberately no way to build a context from a {@link Job} alone: the head of a
+ * branch is not settled until the build has checked it out, so a SHA resolved before then can be one
+ * the build never builds, leaving a check reported against the wrong commit. Validate a context with
  * {@link #isValid(FilteredLog)} before calling any of the resolving getters.
  */
 class OriginChecksContext {
 
-    private final Job<?, ?> job;
-
-    @CheckForNull
     private final Run<?, ?> run;
-
+    private final Job<?, ?> job;
     private final String url;
     private final OriginSCMFacade scmFacade;
 
@@ -38,25 +34,15 @@ class OriginChecksContext {
     /** Creates a context for a build that has already started. */
     static OriginChecksContext fromRun(
             @NonNull Run<?, ?> run, @NonNull String runUrl, @NonNull OriginSCMFacade scmFacade) {
-        return new OriginChecksContext(run.getParent(), run, runUrl, scmFacade);
+        return new OriginChecksContext(run, runUrl, scmFacade);
     }
 
-    /** Creates a context for a job whose build has not started yet, e.g. while it sits in the queue. */
-    static OriginChecksContext fromJob(
-            @NonNull Job<?, ?> job, @NonNull String jobUrl, @NonNull OriginSCMFacade scmFacade) {
-        return new OriginChecksContext(job, null, jobUrl, scmFacade);
-    }
-
-    private OriginChecksContext(
-            @NonNull Job<?, ?> job,
-            @CheckForNull Run<?, ?> run,
-            @NonNull String url,
-            @NonNull OriginSCMFacade scmFacade) {
-        this.job = job;
+    private OriginChecksContext(@NonNull Run<?, ?> run, @NonNull String url, @NonNull OriginSCMFacade scmFacade) {
         this.run = run;
+        this.job = run.getParent();
         this.url = url;
         this.scmFacade = scmFacade;
-        this.sha = run != null ? resolveHeadSha(run) : resolveHeadSha(job);
+        this.sha = resolveHeadSha(run);
     }
 
     /**
@@ -121,8 +107,9 @@ class OriginChecksContext {
         return job;
     }
 
-    Optional<Run<?, ?>> getRun() {
-        return Optional.ofNullable(run);
+    @NonNull
+    Run<?, ?> getRun() {
+        return run;
     }
 
     /**
@@ -147,7 +134,7 @@ class OriginChecksContext {
      */
     @NonNull
     String getExternalId() {
-        return run != null ? run.getExternalizableId() : job.getFullName();
+        return run.getExternalizableId();
     }
 
     /** Creates an Origin API client authenticated as the app the SCM source is configured with. */
@@ -172,22 +159,12 @@ class OriginChecksContext {
         return resolveSource().map(OriginSCMSource::getOwner);
     }
 
+    /** The SHA the build recorded for itself; never a freshly fetched branch head. */
     @CheckForNull
     private String resolveHeadSha(@NonNull Run<?, ?> theRun) {
         return resolveSource()
                 .flatMap(source -> scmFacade.findRevision(source, theRun))
                 .flatMap(scmFacade::findHash)
                 .orElse(null);
-    }
-
-    @CheckForNull
-    private String resolveHeadSha(@NonNull Job<?, ?> theJob) {
-        Optional<OriginSCMSource> source = resolveSource();
-        Optional<SCMHead> head = scmFacade.findHead(theJob);
-        if (source.isEmpty() || head.isEmpty()) {
-            return null;
-        }
-        Optional<SCMRevision> revision = scmFacade.findRevision(source.get(), head.get());
-        return revision.flatMap(scmFacade::findHash).orElse(null);
     }
 }

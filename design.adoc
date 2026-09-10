@@ -135,18 +135,18 @@ build status, `Tests` for a test report), so they appear side by side under one 
 === Classes (package `checks`)
 
 `OriginChecksPublisherFactory extends ChecksPublisherFactory`::
-  `@Extension`. Claims a job when its SCM source is an `OriginSCMSource` with resolvable
+  `@Extension`. Claims a build when its SCM source is an `OriginSCMSource` with resolvable
   credentials and a resolvable head SHA, and declines it otherwise; the checks API asks every
-  registered factory in turn and takes the first that claims the job.
-  When it declines a job that *is* Origin backed it writes the reasons to the build log, since that
-  is a misconfiguration the user wants to see. Declining a job that is not Origin backed is the
-  contract rather than a problem, so those stay silent and unrelated builds get no output.
+  registered factory in turn and takes the first that claims the build.
+  When it declines a build that *is* Origin backed it writes the reasons to the build log, since
+  that is a misconfiguration the user wants to see. Declining a build that is not Origin backed is
+  the contract rather than a problem, so those stay silent and unrelated builds get no output.
+  Only the `Run` overload is implemented; see <<checks-no-queued>>.
 
 `OriginChecksContext`::
   Resolves the repository, head SHA, credentials, build URL and the suite/check identities.
-  Created either from a `Run` (revision read from the build's `SCMRevisionAction`) or from a `Job`
-  while the build is still queued (revision fetched from the source, so this path costs one API
-  call).
+  Always created from a `Run`, with the revision read from the build's own `SCMRevisionAction`, so
+  no API call and no guesswork is involved.
 
 `OriginChecksDetails`::
   Translates `ChecksDetails` into `CheckRunInput` / `CheckRunOutput` / `CheckRunAnnotationInput`,
@@ -160,12 +160,30 @@ build status, `Tests` for a test report), so they appear side by side under one 
 
 `OriginStatusChecksProperties extends AbstractStatusChecksProperties`::
   `@Extension`. Without it the checks API publishes nothing automatically, so this is what turns
-  the queued / in-progress / per-stage / completed reports on. The name it reports under is the
+  the in-progress / per-stage / completed reports on. The name it reports under is the
   fixed `CHECK_NAME`; Origin matches required checks on it, so making it configurable would let a
   rename silently break the required-check configuration of a repository already reporting.
 
 `OriginChecksAction extends InvisibleAction`::
   Remembers, per check of a build, how many annotations Origin has already accepted.
+
+[[checks-no-queued]]
+=== No queued state
+
+The checks API offers two ways to report: from a `Run`, and from a `Job` before any build exists,
+which it uses to publish the `queued` state from a queue listener. Only the `Run` path is
+implemented.
+
+A check run is keyed on `(repository, head SHA, suite key, check key)`, so reporting anything
+requires a commit. Before the build starts there is no recorded revision, so the only way to get one
+is to fetch the current head of the branch from Origin — a guess, and a remote call from a queue
+listener. The head is not settled until the build checks it out: a push in between leaves a `queued`
+check run against a commit that is never built, which then never completes, while the build reports
+its own state against a different SHA.
+
+Reporting from the build's recorded revision only is therefore deliberate. The cost is that no
+`queued` state is ever published; the first thing Origin sees for a build is its `in_progress` or
+`completed` report.
 
 === Identity and idempotency
 
@@ -182,8 +200,7 @@ self-contained request and there is no create-then-update distinction to track.
 `externalId` (both suite and run)::
   `Run.getExternalizableId()`, i.e. one attempt per Jenkins build. Reporting a new `externalId`
   under the same key supersedes the previous attempt, which is what makes a rebuild replace the
-  earlier result rather than sit alongside it. The queued report has no build yet and uses the job's
-  full name, so it is superseded once the build starts.
+  earlier result rather than sit alongside it.
 
 `externalUpdatedAt`::
   Sent on every report, so that a stale retry cannot overwrite newer state.
@@ -307,7 +324,7 @@ static Jenkins SCM and credentials lookups out of the way:
 
 . **`OriginChecksDetailsTest`** — status, conclusion, timestamp, URL, output and annotation mapping,
   including the size limits and the contract violations that must be rejected.
-. **`OriginChecksContextTest`** — repository, head SHA (branch, pull request head, queued build),
+. **`OriginChecksContextTest`** — repository, head SHA (branch and pull request head),
   suite and attempt identities, and each reason a job can be invalid.
 . **`OriginChecksPublisherFactoryTest`** — which jobs are claimed, and that declining one is silent
   unless verbose logging was asked for.

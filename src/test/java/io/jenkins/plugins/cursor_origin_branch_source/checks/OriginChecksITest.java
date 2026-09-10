@@ -1,6 +1,7 @@
 package io.jenkins.plugins.cursor_origin_branch_source.checks;
 
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
@@ -67,6 +68,23 @@ class OriginChecksITest extends MockOriginServerTestBase {
         assertThat(
                 checkRun.getDetailsUrl(), containsString(project.getItem("main").getUrl()));
         assertThat(checkRun.getOutputTitle(), is(notNullValue()));
+    }
+
+    /**
+     * Nothing is reported before the build exists. The checks API offers to report a job as queued, but
+     * the commit to report against is only known once the build has recorded it, so taking that offer
+     * would mean guessing a branch head and possibly reporting against a commit that is never built.
+     */
+    @Test
+    void reportsNothingUntilTheBuildKnowsItsCommit() throws Exception {
+        mockServer.addRepo(OWNER, "pistons", "main").branch("main", MAIN_SHA).file("Jenkinsfile", JENKINSFILE);
+
+        createProject("pistons", new OriginChecksTrait());
+
+        MockOriginServer.MockCheckRun checkRun = mockServer.checkRun(OWNER, "pistons", "Jenkins");
+        // The completed report is the only one, so nothing was reported while the job was queued.
+        assertThat(checkRun.reportedStates(), contains("completed/success"));
+        assertThat(checkRun.getHeadSha(), is(MAIN_SHA));
     }
 
     /** A pull request has to be reported against its head commit, not the target branch. */

@@ -36,16 +36,17 @@ class OriginChecksContextTest {
     @Test
     void resolvesRepositoryCoordinatesFromTheSource() {
         Job job = mockJob();
+        Run run = mockRun(job);
         OriginSCMSource source = createSource();
         OriginSCMFacade facade = mockFacadeWithSource(job, source);
 
-        OriginChecksContext context = OriginChecksContext.fromJob(job, URL, facade);
+        OriginChecksContext context = OriginChecksContext.fromRun(run, URL, facade);
 
         assertThat(context.getRepoOwner(), is(OWNER));
         assertThat(context.getRepository(), is(REPOSITORY));
         assertThat(context.getUrl(), is(URL));
         assertThat(context.getJob(), is(job));
-        assertThat(context.getRun(), is(Optional.empty()));
+        assertThat(context.getRun(), is(run));
     }
 
     @Test
@@ -80,21 +81,6 @@ class OriginChecksContextTest {
         assertThat(OriginChecksContext.fromRun(run, URL, facade).getHeadSha(), is(PR_HEAD_SHA));
     }
 
-    /** With no build yet there is no recorded revision, so the head has to be fetched. */
-    @Test
-    void fetchesTheShaOfAQueuedBuildFromTheSource() {
-        Job job = mockJob();
-        OriginSCMSource source = createSource();
-        SCMHead head = new SCMHead("main");
-        SCMRevision revision = new AbstractGitSCMSource.SCMRevisionImpl(head, BRANCH_SHA);
-
-        OriginSCMFacade facade = mockFacadeWithSource(job, source);
-        when(facade.findHead(job)).thenReturn(Optional.of(head));
-        when(facade.findRevision(source, head)).thenReturn(Optional.of(revision));
-
-        assertThat(OriginChecksContext.fromJob(job, URL, facade).getHeadSha(), is(BRANCH_SHA));
-    }
-
     @Test
     void unresolvableShaIsReportedRatherThanGuessed() {
         Job job = mockJob();
@@ -114,7 +100,6 @@ class OriginChecksContextTest {
         OriginSCMFacade facade = mockFacadeWithSource(job, createSource());
 
         assertThat(OriginChecksContext.fromRun(run, URL, facade).getExternalId(), is("widgets/main#3"));
-        assertThat(OriginChecksContext.fromJob(job, URL, facade).getExternalId(), is("widgets/main"));
     }
 
     /**
@@ -124,9 +109,10 @@ class OriginChecksContextTest {
     @Test
     void groupsChecksOfAllBranchesIntoOneSuite() {
         Job job = mockJob();
+        Run run = mockRun(job);
         OriginSCMFacade facade = mockFacadeWithSource(job, createSource());
 
-        OriginChecksContext context = OriginChecksContext.fromJob(job, URL, facade);
+        OriginChecksContext context = OriginChecksContext.fromRun(run, URL, facade);
 
         assertThat(context.getSuiteKey(), is("widgets/main"));
         assertThat(context.getSuiteName(), is("widgets » main"));
@@ -135,32 +121,35 @@ class OriginChecksContextTest {
     @Test
     void isNotValidForAJobWithoutAnOriginSource() {
         Job job = mockJob();
+        Run run = mockRun(job);
         OriginSCMFacade facade = mock(OriginSCMFacade.class);
         when(facade.findOriginSCMSource(job)).thenReturn(Optional.empty());
         FilteredLog logger = new FilteredLog("errors:");
 
-        assertThat(OriginChecksContext.fromJob(job, URL, facade).isValid(logger), is(false));
+        assertThat(OriginChecksContext.fromRun(run, URL, facade).isValid(logger), is(false));
         assertThat(logger.getErrorMessages(), hasItem("Job does not use a Cursor Origin SCM source"));
     }
 
     @Test
     void isNotValidWithoutConfiguredCredentials() {
         Job job = mockJob();
+        Run run = mockRun(job);
         OriginSCMSource source = new OriginSCMSource(OWNER, REPOSITORY);
         OriginSCMFacade facade = mockFacadeWithSource(job, source);
         FilteredLog logger = new FilteredLog("errors:");
 
-        assertThat(OriginChecksContext.fromJob(job, URL, facade).isValid(logger), is(false));
+        assertThat(OriginChecksContext.fromRun(run, URL, facade).isValid(logger), is(false));
         assertThat(logger.getErrorMessages(), hasItem("No credentials configured on the Cursor Origin SCM source"));
     }
 
     @Test
     void isNotValidWhenTheConfiguredCredentialsAreMissing() {
         Job job = mockJob();
+        Run run = mockRun(job);
         OriginSCMFacade facade = mockFacadeWithSource(job, createSource());
         FilteredLog logger = new FilteredLog("errors:");
 
-        assertThat(OriginChecksContext.fromJob(job, URL, facade).isValid(logger), is(false));
+        assertThat(OriginChecksContext.fromRun(run, URL, facade).isValid(logger), is(false));
         assertThat(
                 logger.getErrorMessages(), hasItem("No Cursor Origin app credentials found with id: 'origin-creds'"));
     }
@@ -168,12 +157,13 @@ class OriginChecksContextTest {
     @Test
     void isNotValidWithoutAResolvableSha() {
         Job job = mockJob();
+        Run run = mockRun(job);
         OriginSCMFacade facade = mockFacadeWithSource(job, createSource());
         when(facade.findCredentials(job, CREDENTIALS_ID))
                 .thenReturn(Optional.of(mock(CursorOriginAppCredentials.class)));
         FilteredLog logger = new FilteredLog("errors:");
 
-        assertThat(OriginChecksContext.fromJob(job, URL, facade).isValid(logger), is(false));
+        assertThat(OriginChecksContext.fromRun(run, URL, facade).isValid(logger), is(false));
         assertThat(logger.getErrorMessages(), hasItem("No HEAD SHA found for acme-corp/widgets"));
     }
 

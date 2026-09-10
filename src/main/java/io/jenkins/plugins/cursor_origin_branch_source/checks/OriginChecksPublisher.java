@@ -156,7 +156,7 @@ class OriginChecksPublisher extends ChecksPublisher {
         }
 
         OriginChecksAction action = getOrCreateAction(details.getName(), checkRunId);
-        int alreadyPublished = action == null ? 0 : action.getPublishedAnnotations();
+        int alreadyPublished = action.getPublishedAnnotations();
         if (alreadyPublished >= annotations.size()) {
             return;
         }
@@ -186,29 +186,25 @@ class OriginChecksPublisher extends ChecksPublisher {
                 buildLogger.log("%s", message + e.getMessage());
                 return;
             }
-            if (action != null) {
-                action.addPublishedAnnotations(batch.size());
-            }
+            action.addPublishedAnnotations(batch.size());
         }
     }
 
     /**
      * Returns the record of what has already been published for this check, creating it if this is the
-     * first publish. Returns {@code null} for a queued check, which has no build to record against.
+     * first publish.
      */
+    @NonNull
     private OriginChecksAction getOrCreateAction(String checkKey, String checkRunId) {
-        Optional<Run<?, ?>> run = context.getRun();
-        if (run.isEmpty()) {
-            return null;
-        }
-        Optional<OriginChecksAction> existing = run.get().getActions(OriginChecksAction.class).stream()
+        Run<?, ?> run = context.getRun();
+        Optional<OriginChecksAction> existing = run.getActions(OriginChecksAction.class).stream()
                 .filter(action -> action.getCheckKey().equals(checkKey))
                 .findFirst();
         if (existing.isPresent()) {
             return existing.get();
         }
         OriginChecksAction action = new OriginChecksAction(checkKey, checkRunId);
-        run.get().addAction(action);
+        run.addAction(action);
         return action;
     }
 

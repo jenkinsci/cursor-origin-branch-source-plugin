@@ -9,11 +9,9 @@ import hudson.security.ACL;
 import io.jenkins.plugins.cursor_origin_branch_source.CursorOriginAppCredentials;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginPullRequestSCMRevision;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginSCMSource;
-import java.io.IOException;
 import java.util.Collections;
 import java.util.Optional;
 import jenkins.plugins.git.AbstractGitSCMSource;
-import jenkins.scm.api.SCMHead;
 import jenkins.scm.api.SCMRevision;
 import jenkins.scm.api.SCMRevisionAction;
 import jenkins.scm.api.SCMSource;
@@ -33,29 +31,13 @@ class OriginSCMFacade {
         return source instanceof OriginSCMSource originSource ? Optional.of(originSource) : Optional.empty();
     }
 
-    /** Finds the head that {@code job} builds, if the job was created by an {@link SCMSource}. */
-    Optional<SCMHead> findHead(@NonNull Job<?, ?> job) {
-        return Optional.ofNullable(SCMHead.HeadByItem.findHead(job));
-    }
-
     /**
-     * Fetches the current revision of {@code head} from the remote.
+     * Reads the revision that {@code run} was built from, as recorded on the build itself.
      *
-     * <p>Only for use when no build exists yet; prefer {@link #findRevision(SCMSource, Run)}, which
-     * reads the revision recorded on the build and performs no remote call.
+     * <p>This is the only way a revision is resolved, and it performs no remote call. Fetching the
+     * current head of a branch instead would be a guess: the head is not settled until the build has
+     * checked it out, so a revision resolved any earlier can be one the build never builds.
      */
-    Optional<SCMRevision> findRevision(@NonNull SCMSource source, @NonNull SCMHead head) {
-        try {
-            return Optional.ofNullable(source.fetch(head, null));
-        } catch (IOException | InterruptedException e) {
-            throw new IllegalStateException(
-                    String.format(
-                            "Could not fetch revision from source: %s and head: %s", source.getId(), head.getName()),
-                    e);
-        }
-    }
-
-    /** Reads the revision that {@code run} was built from, as recorded locally on the build. */
     Optional<SCMRevision> findRevision(@NonNull SCMSource source, @NonNull Run<?, ?> run) {
         return Optional.ofNullable(SCMRevisionAction.getRevision(source, run));
     }
