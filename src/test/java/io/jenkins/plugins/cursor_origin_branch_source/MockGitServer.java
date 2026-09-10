@@ -139,11 +139,8 @@ class MockGitServer implements Closeable {
             server.stop(0);
         }
         if (tempDir != null) {
-            try {
-                Files.walk(tempDir)
-                        .sorted(Comparator.reverseOrder())
-                        .map(Path::toFile)
-                        .forEach(File::delete);
+            try (var walk = Files.walk(tempDir)) {
+                walk.sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
             } catch (IOException ignored) {
             }
         }
@@ -298,9 +295,10 @@ class MockGitServer implements Closeable {
             @SuppressWarnings("unchecked")
             List<String> scopes = (List<String>) claims.get("scopes");
             List<String> effectiveRepoIds = tokenRepoIds != null ? List.copyOf(tokenRepoIds) : List.of();
-            // Enforce scoping: if token names specific repos, this repo must be among them
+            // Enforce scoping: if token names specific repos, this repo must be among them;
+            // a repo without a registered ID is also inaccessible to a scoped token
             String registeredId = repoIds.get(owner + "/" + name);
-            if (registeredId != null && !effectiveRepoIds.isEmpty() && !effectiveRepoIds.contains(registeredId)) {
+            if (!effectiveRepoIds.isEmpty() && (registeredId == null || !effectiveRepoIds.contains(registeredId))) {
                 LOGGER.warning("Token repositoryIds " + effectiveRepoIds + " does not permit access to " + owner + "/"
                         + name + " (id=" + registeredId + ")");
                 sendStatus(he, 403);

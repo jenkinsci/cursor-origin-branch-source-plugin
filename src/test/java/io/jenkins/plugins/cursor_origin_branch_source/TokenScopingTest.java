@@ -1,9 +1,9 @@
 package io.jenkins.plugins.cursor_origin_branch_source;
 
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.empty;
-import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
 
@@ -116,7 +116,7 @@ class TokenScopingTest extends MockOriginServerTestBase {
 
         MockGitServer.LastAuth auth = mockGitServer.getLastAuth(OWNER, "checkout-repo");
         assertThat("git server was contacted", auth != null);
-        assertThat(auth.repositoryIds(), hasItem(mockRepo.id));
+        assertThat(auth.repositoryIds(), contains(mockRepo.id));
         assertThat(auth.scopes(), containsInAnyOrder("repository:metadata:read", "repository:contents:read"));
     }
 
@@ -155,7 +155,7 @@ class TokenScopingTest extends MockOriginServerTestBase {
 
         MockGitServer.LastAuth auth = mockGitServer.getLastAuth(OWNER, "standalone-repo");
         assertThat("git server was contacted", auth != null);
-        assertThat(auth.repositoryIds(), hasItem(mockRepo.id));
+        assertThat(auth.repositoryIds(), contains(mockRepo.id));
         assertThat(auth.scopes(), containsInAnyOrder("repository:metadata:read", "repository:contents:read"));
     }
 
