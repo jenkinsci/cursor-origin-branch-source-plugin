@@ -1,6 +1,7 @@
 package io.jenkins.plugins.cursor_origin_branch_source;
 
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.is;
@@ -22,6 +23,7 @@ import hudson.plugins.git.UserRemoteConfig;
 import hudson.util.Secret;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
 import jenkins.branch.BranchSource;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition;
@@ -31,9 +33,11 @@ import org.jenkinsci.plugins.workflow.libs.GlobalLibraries;
 import org.jenkinsci.plugins.workflow.libs.LibraryConfiguration;
 import org.jenkinsci.plugins.workflow.libs.SCMSourceRetriever;
 import org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject;
+import org.junit.jupiter.api.AutoClose;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.jvnet.hudson.test.LogRecorder;
 
 /**
  * Tests for token scoping behavior (issue #16: properly scope access tokens to relevant repo).
@@ -51,6 +55,9 @@ import org.junit.jupiter.api.Test;
  * </ul>
  */
 class TokenScopingTest extends MockOriginServerTestBase {
+
+    @AutoClose
+    LogRecorder logging = new LogRecorder().record(OriginAppCredentials.class, Level.FINE);
 
     @BeforeEach
     void setUpAgent() throws Exception {
@@ -114,6 +121,7 @@ class TokenScopingTest extends MockOriginServerTestBase {
         MockGitServer.LastAuth auth = mockGitServer.getLastAuth(OWNER, "checkout-repo");
         assertThat("git server was contacted", auth != null);
         assertThat(auth.repositoryIds(), hasItem(mockRepo.id));
+        assertThat(auth.scopes(), containsInAnyOrder("repository:metadata:read", "repository:contents:read"));
     }
 
     // ── 2.ii: standalone CpsScmFlowDefinition ───────────────────────────────
@@ -133,7 +141,7 @@ class TokenScopingTest extends MockOriginServerTestBase {
     void standaloneProjectCheckoutScopedToRepo() throws Exception {
         MockOriginServer.MockRepo mockRepo = mockServer.addRepo(OWNER, "standalone-repo", "main");
         String sha = mockGitServer.addRepo(
-                OWNER, "standalone-repo", mockRepo.id, "main", Map.of("Jenkinsfile", "node('remote') { echo 'done' }"));
+                OWNER, "standalone-repo", mockRepo.id, "main", Map.of("Jenkinsfile", "node('remote') {checkout scm}"));
         mockRepo.branch("main", sha);
 
         WorkflowJob job = r.createProject(WorkflowJob.class, "standalone");
@@ -155,6 +163,7 @@ class TokenScopingTest extends MockOriginServerTestBase {
         MockGitServer.LastAuth auth = mockGitServer.getLastAuth(OWNER, "standalone-repo");
         assertThat("git server was contacted", auth != null);
         assertThat(auth.repositoryIds(), hasItem(mockRepo.id));
+        assertThat(auth.scopes(), containsInAnyOrder("repository:metadata:read", "repository:contents:read"));
     }
 
     // ── 3: @Library controller clone ────────────────────────────────────────
@@ -186,6 +195,7 @@ class TokenScopingTest extends MockOriginServerTestBase {
         assertThat("library git server was contacted", libAuth != null);
         // Library clones on the controller use unrestricted tokens (intentional)
         assertThat(libAuth.repositoryIds(), is(empty()));
+        assertThat(libAuth.scopes(), is(empty()));
     }
 
     // ── 4.a: withGit unrestricted credential ────────────────────────────────
@@ -197,13 +207,13 @@ class TokenScopingTest extends MockOriginServerTestBase {
     @Test
     void withGitUnrestrictedSucceeds() throws Exception {
         mockGitServer.addRepo(OWNER, "git-repo", "main", Map.of("file.txt", "hello"));
-        addUnrestrictedCredentials("origin-open-creds");
+        addUnrestrictedCredentials("origin-unrestricted-creds");
 
         WorkflowJob job = r.createProject(WorkflowJob.class, "with-git-test");
         job.addProperty(new ParametersDefinitionProperty(List.of(new StringParameterDefinition("REPO_URL", ""))));
         job.setDefinition(new CpsFlowDefinition("""
                 node('remote') {
-                  withCredentials([gitUsernamePassword(credentialsId: 'origin-open-creds', gitToolName: 'Default')]) {
+                  withCredentials([gitUsernamePassword(credentialsId: 'origin-unrestricted-creds', gitToolName: 'Default')]) {
                     sh 'git clone "$REPO_URL" cloned'
                   }
                 }
@@ -226,7 +236,7 @@ class TokenScopingTest extends MockOriginServerTestBase {
     @Test
     void withCredentialsUnrestrictedCloneSucceeds() throws Exception {
         mockGitServer.addRepo(OWNER, "clone-repo", "main", Map.of("file.txt", "hello"));
-        addUnrestrictedCredentials("origin-open-creds");
+        addUnrestrictedCredentials("origin-unrestricted-creds");
 
         WorkflowJob job = r.createProject(WorkflowJob.class, "clone-test");
         job.addProperty(new ParametersDefinitionProperty(List.of(new StringParameterDefinition("REPO_BASE", ""))));
@@ -234,7 +244,7 @@ class TokenScopingTest extends MockOriginServerTestBase {
         String repoBase = mockGitServer.baseUrl().substring("http://".length()) + "/" + OWNER + "/clone-repo.git";
         job.setDefinition(new CpsFlowDefinition("""
                 node('remote') {
-                  withCredentials([usernameColonPassword(credentialsId: 'origin-open-creds', variable: 'CREDS')]) {
+                  withCredentials([usernameColonPassword(credentialsId: 'origin-unrestricted-creds', variable: 'CREDS')]) {
                     sh 'git clone "http://$CREDS@$REPO_BASE" cloned'
                   }
                 }
@@ -253,13 +263,13 @@ class TokenScopingTest extends MockOriginServerTestBase {
      */
     @Test
     void withCredentialsUnrestrictedCurlSucceeds() throws Exception {
-        addUnrestrictedCredentials("origin-open-creds");
+        addUnrestrictedCredentials("origin-unrestricted-creds");
 
         WorkflowJob job = r.createProject(WorkflowJob.class, "curl-test");
         job.addProperty(new ParametersDefinitionProperty(List.of(new StringParameterDefinition("REST_URL", ""))));
         job.setDefinition(new CpsFlowDefinition("""
                 node('remote') {
-                  withCredentials([usernamePassword(credentialsId: 'origin-open-creds',
+                  withCredentials([usernamePassword(credentialsId: 'origin-unrestricted-creds',
                       usernameVariable: 'USER', passwordVariable: 'TOKEN')]) {
                     sh 'curl -sf -H "Authorization: Bearer $TOKEN" "$REST_URL"'
                   }
