@@ -1,15 +1,28 @@
 <p>
-    When checked, this credential may be used freely in pipeline steps such as
-    <code>withCredentials</code> and <code>withGit</code>, exposing the raw access token to
-    arbitrary shell commands.
+    When checked, this credential may be used freely in Pipeline steps such as <code>withCredentials</code> and <code>withGit</code>.
+    An unrestricted access token will be sent to the agent and available for use from user-defined scripts.
+    These might be used to make REST API calls, push tags to the Git server, and so on.
 </p>
 <p>
-    When unchecked (the default), the credential is <em>restricted</em>: it can only be used
-    by trusted Jenkins infrastructure (such as <code>checkout scm</code>) that scopes the
-    token to the specific repository being accessed.  Pipeline steps that would expose the
-    token to user-defined code are refused.
+    Be very careful about using this option.
+    The token will be able to access any repositories on which the app is installed,
+    and be granted all of its permissions.
+    If some users of the controller able to define jobs or edit build scripts might not be fully trusted,
+    it is advisable to define a separate app installed on specific repositories and with minimal permissions,
+    then create a separate credential object on a folder dedicated to this purpose.
 </p>
 <p>
-    Only enable this for credentials whose app installation has been intentionally granted
-    access to all repositories that pipeline authors may target.
+    When unchecked (the default), the credential is <em>restricted</em>.
+    It may be used freely by REST API calls inside the controller, such as for branch indexing.
+    It may also be passed to an agent for use in <code>checkout scm</code>,
+    but the resulting token will be limited to the one repository
+    and granted only permission to read repository contents:
+    the minimum necessary for that <code>git clone</code> to work.
+</p>
+<p>
+    Library checkouts will not currently work in restricted mode,
+    even though the checkout is done inside the controller and the token is never exposed to user scripts.
+    Unless and until this is solved, you must use an unrestricted credential for libraries;
+    again it is safest to define a dedicated app for this purpose,
+    installed on the library repository and limited to reading repository contents.
 </p>
