@@ -61,7 +61,7 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
     public record Repo(String repoOwner, String repository) implements Serializable {}
 
     @CheckForNull
-    private Repo repo;
+    Repo repo;
 
     @DataBoundConstructor
     public OriginAppCredentials(
