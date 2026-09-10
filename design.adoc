@@ -241,10 +241,9 @@ are used on an agent).
 Test scenarios:
 
 . **3.1 `branchIndexingUsesUnrestrictedToken`** — REST-only indexing; git server never contacted.
-. **3.2.i `multiBranchCheckoutScopedToRepo`** — `@Disabled`: MBP `checkout scm` should use a
-  repo-scoped token, but currently mints unrestricted.
-. **3.2.ii `standaloneProjectCheckoutScopedToRepo`** — `@Disabled`: standalone project with
-  `CpsScmFlowDefinition` same issue. Note: lightweight mode requires
+. **3.2.i `multiBranchCheckoutScopedToRepo`** — MBP `checkout scm` uses a repo-scoped token.
+. **3.2.ii `standaloneProjectCheckoutScopedToRepo`** — standalone project with
+  `CpsScmFlowDefinition` also uses a repo-scoped token. Note: lightweight mode requires
   `OriginSCMFileSystem.BuilderImpl.supports(GitSCM)` recognition (not yet implemented).
 . **3.3 `libraryCloneOnControllerUsesUnrestrictedToken`** — `@Library` controller clone uses
   unrestricted token by design.

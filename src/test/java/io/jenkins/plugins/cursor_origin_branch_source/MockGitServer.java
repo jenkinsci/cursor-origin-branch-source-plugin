@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.PublicKey;
@@ -279,7 +280,7 @@ class MockGitServer implements Closeable {
             sendStatus(he, 401);
             return null;
         }
-        String decoded = new String(Base64.getDecoder().decode(header.substring(6)));
+        String decoded = new String(Base64.getDecoder().decode(header.substring(6)), StandardCharsets.ISO_8859_1);
         int colon = decoded.indexOf(':');
         String password = colon >= 0 ? decoded.substring(colon + 1) : decoded;
         if (!password.startsWith("oit_")) {
