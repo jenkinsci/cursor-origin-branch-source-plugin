@@ -157,7 +157,8 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
                 if (dr instanceof PathRequirement pr) {
                     var path = pr.getPath();
                     LOGGER.fine(() -> "inspecting " + path);
-                    var matcher = Pattern.compile("/([^/]+)/([^/]+?)(?:[.]git)?").matcher(path);
+                    var matcher =
+                            Pattern.compile("/([^/]+)/([^/]+?)(?:[.]git)?").matcher(path);
                     if (matcher.matches()) {
                         // TODO this should also verify SchemeRequirement + HostnameRequirement/HostnamePortRequirement
                         return new Repo(matcher.group(1), matcher.group(2));
