@@ -13,8 +13,6 @@ import io.jsonwebtoken.LocatorAdapter;
 import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -731,13 +729,6 @@ class MockOriginServer implements Closeable {
             }
         }
         return null;
-    }
-
-    private static void drainBody(HttpExchange he) {
-        try (InputStream is = he.getRequestBody()) {
-            is.transferTo(OutputStream.nullOutputStream());
-        } catch (IOException ignored) {
-        }
     }
 
     static final class HaltException extends RuntimeException {
