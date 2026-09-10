@@ -314,7 +314,34 @@ class TokenScopingTest extends MockOriginServerTestBase {
         r.assertLogContains("Cannot use restricted credentials", build);
     }
 
-    // TODO similar assertion for withGit on restricted credentials
+    // ── 4 (restricted): withGit restricted credential ───────────────────────
+
+    /**
+     * Scenario 4 (restricted): using a restricted {@code OriginAppCredentials} in a
+     * {@code withGit} step must also fail immediately.
+     */
+    @Test
+    void withGitRestrictedThrows() throws Exception {
+        mockGitServer.addRepo(OWNER, "git-repo", "main", Map.of("file.txt", "hello"));
+
+        WorkflowJob job = r.createProject(WorkflowJob.class, "withgit-restricted-test");
+        job.addProperty(new ParametersDefinitionProperty(List.of(new StringParameterDefinition("REPO_URL", ""))));
+        job.setDefinition(new CpsFlowDefinition("""
+                node('remote') {
+                  withCredentials([gitUsernamePassword(credentialsId: 'origin-test-creds', gitToolName: 'Default')]) {
+                    sh 'git clone "$REPO_URL" cloned'
+                  }
+                }
+                """, true));
+        WorkflowRun build = r.assertBuildStatus(
+                Result.FAILURE,
+                job.scheduleBuild2(
+                                0,
+                                new ParametersAction(new StringParameterValue(
+                                        "REPO_URL", mockGitServer.baseUrl() + "/" + OWNER + "/git-repo.git")))
+                        .get());
+        r.assertLogContains("Cannot use restricted credentials", build);
+    }
 
     // ── helpers ──────────────────────────────────────────────────────────────
 

@@ -251,5 +251,5 @@ Test scenarios:
 . **3.4.a `withGitUnrestrictedSucceeds`** — `gitUsernamePassword` binding runs a git clone with an unrestricted credential.
 . **3.4.b `withCredentialsUnrestrictedCloneSucceeds`** — `usernameColonPassword` binding runs a git clone with an unrestricted credential.
 . **3.4.c `withCredentialsUnrestrictedCurlSucceeds`** — `usernamePassword` binding runs curl against REST API with an unrestricted credential.
-. **3.4 restricted `withCredentialsRestrictedThrows`** — `@Disabled`: restricted-credential enforcement not implemented;
-  build currently succeeds instead of failing.
+. **3.4 restricted `withCredentialsRestrictedThrows`** — `withCredentials` with a restricted credential fails with `SecurityException`.
+. **3.4 restricted `withGitRestrictedThrows`** — `withGit` (`gitUsernamePassword`) with a restricted credential also fails with `SecurityException`.
