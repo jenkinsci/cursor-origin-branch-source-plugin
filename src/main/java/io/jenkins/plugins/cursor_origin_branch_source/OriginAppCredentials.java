@@ -1,6 +1,7 @@
 package io.jenkins.plugins.cursor_origin_branch_source;
 
 import com.cloudbees.plugins.credentials.CredentialsDescriptor;
+import com.cloudbees.plugins.credentials.CredentialsNameProvider;
 import com.cloudbees.plugins.credentials.CredentialsScope;
 import com.cloudbees.plugins.credentials.CredentialsSnapshotTaker;
 import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
@@ -102,10 +103,15 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
     @NonNull
     @Override
     public Secret getPassword() {
-        if (!unrestricted && repo == null) {
-            throw new IllegalStateException("Cannot use restricted credentials without known repository");
-        }
+        checkRestriction();
         return Secret.fromString(mintToken());
+    }
+
+    private void checkRestriction() throws SecurityException {
+        if (!unrestricted && repo == null) {
+            throw new SecurityException("Cannot use restricted credentials " + CredentialsNameProvider.name(this)
+                    + " without known repository");
+        }
     }
 
     @Override
@@ -140,6 +146,7 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
                 }
             }
         }
+        LOGGER.fine(() -> "found nothing for " + build);
         return this;
     }
 
@@ -220,9 +227,7 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
 
     private Object writeReplace() {
         if (Channel.current() != null) {
-            if (!unrestricted && repo == null) {
-                throw new IllegalStateException("Cannot use restricted credentials without known repository");
-            }
+            checkRestriction();
             return new DelegatingOriginAppCredentials(
                     getId(),
                     getDescription(),

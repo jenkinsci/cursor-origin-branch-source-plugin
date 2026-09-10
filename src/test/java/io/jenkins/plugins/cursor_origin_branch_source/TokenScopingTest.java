@@ -311,7 +311,7 @@ class TokenScopingTest extends MockOriginServerTestBase {
                                 new ParametersAction(new StringParameterValue(
                                         "REST_URL", mockServer.baseUrl() + "/v1/origin/installation/repos")))
                         .get());
-        r.assertLogContains("Cannot use restricted credentials without known repository", build);
+        r.assertLogContains("Cannot use restricted credentials", build);
     }
 
     // TODO similar assertion for withGit on restricted credentials
