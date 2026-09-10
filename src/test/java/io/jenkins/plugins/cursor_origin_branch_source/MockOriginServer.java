@@ -389,10 +389,16 @@ class MockOriginServer implements Closeable {
         if (accessibleRepos == null) {
             effectiveRepoIds = new ArrayList<>(requestedRepoIds);
         } else if (requestedRepoIds.isEmpty()) {
-            effectiveRepoIds = new ArrayList<>();
+            // No specific repos requested: grant access to all repos accessible to this installation
+            effectiveRepoIds = new ArrayList<>(accessibleRepos);
         } else {
             effectiveRepoIds = new ArrayList<>(requestedRepoIds);
             effectiveRepoIds.retainAll(accessibleRepos);
+            if (effectiveRepoIds.isEmpty()) {
+                // None of the requested repos are accessible to this installation
+                sendError(he, 403, "no requested repositoryIds are accessible to this installation");
+                return;
+            }
         }
 
         Instant now = Instant.now();
