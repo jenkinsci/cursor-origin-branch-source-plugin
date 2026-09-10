@@ -377,6 +377,10 @@ class MockOriginServer implements Closeable {
         } else {
             effectiveScopes = new ArrayList<>(requestedScopes);
             effectiveScopes.retainAll(approvedScopes);
+            if (effectiveScopes.isEmpty()) {
+                sendError(he, 403, "no requested scopes are approved for this app");
+                return;
+            }
         }
         // repository:metadata:read is always present in any non-empty scoped token
         if (!effectiveScopes.isEmpty() && !effectiveScopes.contains("repository:metadata:read")) {
