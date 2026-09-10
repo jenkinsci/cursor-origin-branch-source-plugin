@@ -14,6 +14,7 @@ class OriginChecksAction extends InvisibleAction {
 
     @SuppressWarnings("lgtm[jenkins/plaintext-storage]")
     private final String checkKey;
+
     private final String checkRunId;
     private int publishedAnnotations;
 
