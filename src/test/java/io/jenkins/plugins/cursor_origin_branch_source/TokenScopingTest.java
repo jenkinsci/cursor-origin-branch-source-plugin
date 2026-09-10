@@ -190,7 +190,13 @@ class TokenScopingTest extends MockOriginServerTestBase {
         assertThat("library git server was contacted", libAuth != null);
         // Library clones on the controller use unrestricted tokens (intentional)
         assertThat(libAuth.repositoryIds(), is(empty()));
-        assertThat(libAuth.scopes(), is(empty()));
+        assertThat(
+                libAuth.scopes(),
+                containsInAnyOrder(
+                        "repository:metadata:read",
+                        "repository:contents:read",
+                        "repository:pull_requests:read",
+                        "repository:checks:write"));
     }
 
     // ── 4.a: withGit unrestricted credential ────────────────────────────────
