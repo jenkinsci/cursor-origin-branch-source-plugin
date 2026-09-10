@@ -13,16 +13,10 @@
 </p>
 <p>
     When unchecked (the default), the credential is <em>restricted</em>.
-    It may be used freely by REST API calls inside the controller, such as for branch indexing.
+    It may be used freely by REST API calls inside the controller, such as for branch indexing;
+    or by Git operations inside the controller, such as library checkouts.
     It may also be passed to an agent for use in <code>checkout scm</code>,
     but the resulting token will be limited to the one repository
     and granted only permission to read repository contents:
     the minimum necessary for that <code>git clone</code> to work.
-</p>
-<p>
-    Library checkouts will not currently work in restricted mode,
-    even though the checkout is done inside the controller and the token is never exposed to user scripts.
-    Unless and until this is solved, you must use an unrestricted credential for libraries;
-    again it is safest to define a dedicated app for this purpose,
-    installed on the library repository and limited to reading repository contents.
 </p>
