@@ -7,6 +7,7 @@ import com.sun.net.httpserver.Filter;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import edu.umd.cs.findbugs.annotations.NonNull;
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwsHeader;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.LocatorAdapter;
@@ -262,17 +263,29 @@ class MockOriginServer implements Closeable {
         }
 
         if ("/v1/origin/installation/repos".equals(path) && "GET".equals(method)) {
-            requireAccessToken(he);
+            requireAccessToken(he, "repository:metadata:read");
             handleListInstallationRepos(he);
             return;
         }
 
         Matcher repoMatcher = REPO_PATH.matcher(path);
         if (repoMatcher.matches()) {
-            requireAccessToken(he);
             String owner = repoMatcher.group(1);
             String repoName = repoMatcher.group(2);
             String rest = repoMatcher.group(3); // e.g. "/branches", "/pulls", "/contents", null
+            // Determine required scope first so auth is checked before repo lookup
+            String requiredScope;
+            if (rest == null || rest.equals("/")) {
+                requiredScope = "repository:metadata:read";
+            } else if (rest.equals("/branches") || rest.equals("/contents") || rest.startsWith("/git/ref/")) {
+                requiredScope = "repository:contents:read";
+            } else if (rest.equals("/pulls") || rest.startsWith("/pulls/")) {
+                requiredScope = "repository:pull_requests:read";
+            } else {
+                sendError(he, 404, "unknown path: " + path);
+                return;
+            }
+            requireAccessToken(he, requiredScope);
             MockRepo repo = findRepo(owner, repoName);
             if (repo == null) {
                 sendError(he, 404, "repo not found: " + owner + "/" + repoName);
@@ -429,17 +442,36 @@ class MockOriginServer implements Closeable {
         });
     }
 
-    private void requireAccessToken(HttpExchange he) {
+    /**
+     * Verifies the Bearer token in the request, then checks that the token's {@code scopes} claim
+     * contains every {@code requiredScope}. Unrestricted tokens (absent/empty {@code scopes}) pass
+     * unconditionally. {@code repository:contents:write} implicitly satisfies
+     * {@code repository:contents:read}.
+     */
+    private void requireAccessToken(HttpExchange he, String... requiredScopes) {
         String auth = he.getRequestHeaders().getFirst("Authorization");
         if (auth == null || !auth.startsWith("Bearer ")) {
             throw new HaltException(401, "missing Bearer token");
         }
         String token = auth.substring("Bearer ".length());
+        String jwtPart = token.startsWith("oit_") ? token.substring(4) : token;
+        Claims payload;
         try {
-            String jwtPart = token.startsWith("oit_") ? token.substring(4) : token;
-            Jwts.parser().verifyWith(serverKeyPair.getPublic()).build().parseSignedClaims(jwtPart);
+            payload = Jwts.parser()
+                    .verifyWith(serverKeyPair.getPublic())
+                    .build()
+                    .parseSignedClaims(jwtPart)
+                    .getPayload();
         } catch (Exception e) {
             throw new HaltException(401, "invalid access token");
+        }
+        @SuppressWarnings("unchecked")
+        List<String> scopes = (List<String>) payload.get("scopes");
+        if (scopes == null || scopes.isEmpty()) return;
+        for (String required : requiredScopes) {
+            if (scopes.contains(required)) continue;
+            if ("repository:contents:read".equals(required) && scopes.contains("repository:contents:write")) continue;
+            throw new HaltException(403, "token missing required scope: " + required);
         }
     }
 

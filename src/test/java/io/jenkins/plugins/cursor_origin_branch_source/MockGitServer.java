@@ -139,11 +139,8 @@ class MockGitServer implements Closeable {
             server.stop(0);
         }
         if (tempDir != null) {
-            try {
-                Files.walk(tempDir)
-                        .sorted(Comparator.reverseOrder())
-                        .map(Path::toFile)
-                        .forEach(File::delete);
+            try (var walk = Files.walk(tempDir)) {
+                walk.sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
             } catch (IOException ignored) {
             }
         }

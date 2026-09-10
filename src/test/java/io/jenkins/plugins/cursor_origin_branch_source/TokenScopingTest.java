@@ -87,8 +87,6 @@ class TokenScopingTest extends MockOriginServerTestBase {
 
         // Git server should not have been contacted for indexing
         assertThat(mockGitServer.getLastAuth(OWNER, "api-only-repo"), is(nullValue()));
-        // TODO: also assert that the REST token used for indexing was unrestricted (no repositoryIds/scopes claims);
-        // MockOriginServer.requireAccessToken currently accepts any valid signed token without inspecting its claims
     }
 
     // ── 2.i: MBP checkout scm ───────────────────────────────────────────────
