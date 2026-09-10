@@ -77,7 +77,7 @@ class TokenScopingTest extends MockOriginServerTestBase {
                 .branch("main", "aaaa1111")
                 .file("Jenkinsfile", "echo 'hello'");
 
-        WorkflowMultiBranchProject mbp = r.jenkins.createProject(WorkflowMultiBranchProject.class, "index-test");
+        WorkflowMultiBranchProject mbp = r.jenkins.createProject(WorkflowMultiBranchProject.class, "p");
         OriginSCMSource source = new OriginSCMSource(OWNER, "api-only-repo");
         source.setCredentialsId(CREDS_ID);
         source.setTraits(List.of(new BranchDiscoveryTrait()));
@@ -101,7 +101,7 @@ class TokenScopingTest extends MockOriginServerTestBase {
         String sha = mockGitServer.addRepo(OWNER, "checkout-repo", mockRepo.id, "main", Map.of("data.txt", "hello"));
         mockRepo.branch("main", sha).file("Jenkinsfile", "node('remote') { checkout scm }");
 
-        WorkflowMultiBranchProject mbp = r.jenkins.createProject(WorkflowMultiBranchProject.class, "mbp-checkout");
+        WorkflowMultiBranchProject mbp = r.jenkins.createProject(WorkflowMultiBranchProject.class, "p");
         OriginSCMSource source = new OriginSCMSource(OWNER, "checkout-repo");
         source.setCredentialsId(CREDS_ID);
         source.setTraits(List.of(new BranchDiscoveryTrait()));
@@ -138,7 +138,7 @@ class TokenScopingTest extends MockOriginServerTestBase {
                 OWNER, "standalone-repo", mockRepo.id, "main", Map.of("Jenkinsfile", "node('remote') {checkout scm}"));
         mockRepo.branch("main", sha);
 
-        WorkflowJob job = r.createProject(WorkflowJob.class, "standalone");
+        WorkflowJob job = r.createProject(WorkflowJob.class, "p");
         String repoUrl = OriginSCMSource.GIT_BASE_URL + "/" + OWNER + "/standalone-repo.git";
         GitSCM scm = new GitSCM(
                 List.of(new UserRemoteConfig(repoUrl, "origin", null, CREDS_ID)),
@@ -182,7 +182,7 @@ class TokenScopingTest extends MockOriginServerTestBase {
         lib.setDefaultVersion("main");
         GlobalLibraries.get().setLibraries(List.of(lib));
 
-        WorkflowJob job = r.createProject(WorkflowJob.class, "lib-test");
+        WorkflowJob job = r.createProject(WorkflowJob.class, "p");
         job.setDefinition(new CpsFlowDefinition("@Library('my-lib') _\nnode('remote') { echo 'done' }", true));
         r.buildAndAssertSuccess(job);
 
@@ -210,7 +210,7 @@ class TokenScopingTest extends MockOriginServerTestBase {
         mockGitServer.addRepo(OWNER, "git-repo", "main", Map.of("file.txt", "hello"));
         addUnrestrictedCredentials("origin-unrestricted-creds");
 
-        WorkflowJob job = r.createProject(WorkflowJob.class, "with-git-test");
+        WorkflowJob job = r.createProject(WorkflowJob.class, "p");
         job.addProperty(new ParametersDefinitionProperty(List.of(new StringParameterDefinition("REPO_URL", ""))));
         job.setDefinition(new CpsFlowDefinition("""
                 node('remote') {
@@ -239,7 +239,7 @@ class TokenScopingTest extends MockOriginServerTestBase {
         mockGitServer.addRepo(OWNER, "clone-repo", "main", Map.of("file.txt", "hello"));
         addUnrestrictedCredentials("origin-unrestricted-creds");
 
-        WorkflowJob job = r.createProject(WorkflowJob.class, "clone-test");
+        WorkflowJob job = r.createProject(WorkflowJob.class, "p");
         job.addProperty(new ParametersDefinitionProperty(List.of(new StringParameterDefinition("REPO_BASE", ""))));
         // REPO_BASE is host:port/owner/name.git — credentials are prepended in the URL
         String repoBase = mockGitServer.baseUrl().substring("http://".length()) + "/" + OWNER + "/clone-repo.git";
@@ -266,7 +266,7 @@ class TokenScopingTest extends MockOriginServerTestBase {
     void withCredentialsUnrestrictedCurlSucceeds() throws Exception {
         addUnrestrictedCredentials("origin-unrestricted-creds");
 
-        WorkflowJob job = r.createProject(WorkflowJob.class, "curl-test");
+        WorkflowJob job = r.createProject(WorkflowJob.class, "p");
         job.addProperty(new ParametersDefinitionProperty(List.of(new StringParameterDefinition("REST_URL", ""))));
         job.setDefinition(new CpsFlowDefinition("""
                 node('remote') {
@@ -294,7 +294,7 @@ class TokenScopingTest extends MockOriginServerTestBase {
      */
     @Test
     void withCredentialsRestrictedThrows() throws Exception {
-        WorkflowJob job = r.createProject(WorkflowJob.class, "restricted-test");
+        WorkflowJob job = r.createProject(WorkflowJob.class, "p");
         job.addProperty(new ParametersDefinitionProperty(List.of(new StringParameterDefinition("REST_URL", ""))));
         job.setDefinition(new CpsFlowDefinition("""
                 node('remote') {
@@ -324,7 +324,7 @@ class TokenScopingTest extends MockOriginServerTestBase {
     void withGitRestrictedThrows() throws Exception {
         mockGitServer.addRepo(OWNER, "git-repo", "main", Map.of("file.txt", "hello"));
 
-        WorkflowJob job = r.createProject(WorkflowJob.class, "withgit-restricted-test");
+        WorkflowJob job = r.createProject(WorkflowJob.class, "p");
         job.addProperty(new ParametersDefinitionProperty(List.of(new StringParameterDefinition("REPO_URL", ""))));
         job.setDefinition(new CpsFlowDefinition("""
                 node('remote') {
