@@ -235,7 +235,6 @@ class TokenScopingTest extends MockOriginServerTestBase {
         MockOriginServer.MockRepo sourceRepo = mockServer.addRepo(OWNER, "source-repo", "main");
         String sourceSha =
                 mockGitServer.addRepo(OWNER, "source-repo", sourceRepo.id, "main", Map.of("Jenkinsfile", """
-                        properties([parameters([string(name: 'REPO_URL')])])
                         node('remote') {
                           git url: params.REPO_URL, branch: 'main', credentialsId: 'origin-test-creds'
                         }
@@ -289,7 +288,6 @@ class TokenScopingTest extends MockOriginServerTestBase {
         WorkflowJob job = r.createProject(WorkflowJob.class, "p");
         job.addProperty(new ParametersDefinitionProperty(List.of(new StringParameterDefinition("REPO_URL", ""))));
         job.setDefinition(new CpsFlowDefinition("""
-                properties([parameters([string(name: 'REPO_URL')])])
                 node('remote') {
                   git url: params.REPO_URL, branch: 'main', credentialsId: 'origin-test-creds'
                 }
