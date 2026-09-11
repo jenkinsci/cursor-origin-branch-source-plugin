@@ -370,3 +370,35 @@ the other checks providers.
 `CursorOriginAppCredentialsLiveTest` is a manual live test (requires env vars `ORIGIN_APP_PRIVATE_KEY_PEM`,
 `ORIGIN_APP_ID`, `ORIGIN_APP_INSTALLATION_ID`) that mints a real token against the production
 Origin API and verifies the credential `getPassword()` round-trip.
+
+=== Token scoping — `TokenScopingTest` and `MockGitServer`
+
+Tests covering issue #16 (properly scope access tokens to relevant repos).
+Uses `MockGitServer`, a JGit smart-HTTP server over `com.sun.net.httpserver.HttpServer`
+(no Jetty dependency — avoids classpath clashes with jenkins/issues#16710).
+Repos are file-based (`Git.init()` + temp dirs); auth is HTTP Basic with `oit_<JWT>` passwords.
+The mock git server records JWT claims (`scopes`, `repositoryIds`) per repo for test assertions.
+
+`MockOriginServer.handleTokenExchange` now parses the POST body and embeds any `scopes` /
+`repositoryIds` from the request as claims in the issued `oit_` JWT, so the git server can
+verify them.
+
+`OriginAppCredentials.doMintToken` logs `caller=controller|agent`, `scopes=…`, `repos=…`
+on every token mint. The caller context is `"controller"` from `mintToken()` and
+`"agent"` from `MintToken.call()` (the `SlaveToMasterCallable` that fires when credentials
+are used on an agent).
+
+Test scenarios:
+
+. **3.1 `branchIndexingUsesUnrestrictedToken`** — REST-only indexing; git server never contacted.
+. **3.2.i `multiBranchCheckoutScopedToRepo`** — MBP `checkout scm` uses a repo-scoped token.
+. **3.2.ii `standaloneProjectCheckoutScopedToRepo`** — standalone project with
+  `CpsScmFlowDefinition` also uses a repo-scoped token. Note: lightweight mode requires
+  `OriginSCMFileSystem.BuilderImpl.supports(GitSCM)` recognition (not yet implemented).
+. **3.3 `libraryCloneOnControllerUsesUnrestrictedToken`** — `@Library` controller clone uses
+  unrestricted token by design.
+. **3.4.a `withGitUnrestrictedSucceeds`** — `gitUsernamePassword` binding runs a git clone with an unrestricted credential.
+. **3.4.b `withCredentialsUnrestrictedCloneSucceeds`** — `usernameColonPassword` binding runs a git clone with an unrestricted credential.
+. **3.4.c `withCredentialsUnrestrictedCurlSucceeds`** — `usernamePassword` binding runs curl against REST API with an unrestricted credential.
+. **3.4 restricted `withCredentialsRestrictedThrows`** — `withCredentials` with a restricted credential fails with `SecurityException`.
+. **3.4 restricted `withGitRestrictedThrows`** — `withGit` (`gitUsernamePassword`) with a restricted credential also fails with `SecurityException`.

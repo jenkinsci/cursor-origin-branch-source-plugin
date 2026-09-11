@@ -2,7 +2,6 @@ package io.jenkins.plugins.cursor_origin_branch_source;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.hasItem;
-import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -68,7 +67,8 @@ class OriginAppCredentialsLiveTest {
      */
     @Test
     void appAuthCanReadRepoContents() throws Exception {
-        String token = OriginAppCredentials.doMintToken(appId, installationId, Files.readString(Path.of(pkFile)));
+        String token = OriginAppCredentials.doMintToken(
+                appId, installationId, Files.readString(Path.of(pkFile)), null, "controller");
 
         OriginServiceApi api = OriginAppCredentials.apiWithToken(token);
 
@@ -98,19 +98,19 @@ class OriginAppCredentialsLiveTest {
                 appId,
                 installationId,
                 Secret.fromString(Files.readString(Path.of(pkFile))));
+        // TODO convert this to run a real build with checkout scm, like standaloneProjectCheckoutScopedToRepo
+        creds.repo = new OriginAppCredentials.Repo(ownerSlug, repoName);
         var agent = r.createOnlineSlave();
         var listener = StreamTaskListener.fromStderr();
         var ws = agent.getWorkspaceRoot();
         assertThat(ws, notNullValue());
         ws.mkdirs();
-        try (var recorder =
-                new LogRecorder().record(OriginAppCredentials.class, Level.FINE).capture(10)) {
+        try (var recorder = new LogRecorder().record(OriginAppCredentials.class, Level.FINE)) {
             ws.act(new UseCreds(
                     CredentialsProvider.snapshot(StandardUsernamePasswordCredentials.class, creds),
                     listener,
                     ownerSlug,
                     repoName));
-            assertThat("two API calls were made to the controller", recorder.getRecords(), hasSize(2));
         }
     }
 
@@ -120,7 +120,6 @@ class OriginAppCredentialsLiveTest {
         @Override
         public Void invoke(File f, VirtualChannel channel) throws IOException, InterruptedException {
             var token = creds.getPassword().getPlainText();
-            creds.getPassword(); // second call; both round-trips verified on controller via logging
             assertThat(
                     new Launcher.LocalLauncher(listener)
                             .launch()

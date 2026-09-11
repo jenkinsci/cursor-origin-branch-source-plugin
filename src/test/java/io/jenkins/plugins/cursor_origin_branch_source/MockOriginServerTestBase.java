@@ -10,6 +10,7 @@ import hudson.util.Secret;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.util.Base64;
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.AutoClose;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,21 +42,36 @@ public abstract class MockOriginServerTestBase {
     @AutoClose
     protected MockOriginServer mockServer;
 
+    @AutoClose
+    MockGitServer mockGitServer;
+
+    protected KeyPair appKeyPair;
+
     private String savedBaseUri;
+    private String savedGitBaseUrl;
     private OriginAppCredentials credentials;
 
     @BeforeEach
     protected void setUp(JenkinsRule r) throws Exception {
         this.r = r;
         KeyPairGenerator gen = KeyPairGenerator.getInstance("Ed25519");
-        KeyPair appKeyPair = gen.generateKeyPair();
+        appKeyPair = gen.generateKeyPair();
 
         mockServer = new MockOriginServer();
-        mockServer.registerApp(APP_ID, appKeyPair.getPublic());
+        mockServer.registerApp(
+                APP_ID,
+                appKeyPair.getPublic(),
+                List.of("repository:contents:read", "repository:pull_requests:read", "repository:checks:write"));
         String mockUrl = mockServer.start();
+
+        mockGitServer = new MockGitServer(mockServer.serverKeyPair().getPublic());
+        String gitUrl = mockGitServer.start();
 
         savedBaseUri = OriginAppCredentials.API_BASE_URI;
         OriginAppCredentials.API_BASE_URI = mockUrl;
+
+        savedGitBaseUrl = OriginSCMSource.GIT_BASE_URL;
+        OriginSCMSource.GIT_BASE_URL = gitUrl;
 
         credentials = new OriginAppCredentials(
                 CredentialsScope.GLOBAL,
@@ -79,6 +95,7 @@ public abstract class MockOriginServerTestBase {
     @AfterEach
     protected void tearDown() {
         OriginAppCredentials.API_BASE_URI = savedBaseUri;
+        OriginSCMSource.GIT_BASE_URL = savedGitBaseUrl;
     }
 
     protected static void showIndexing(ComputedFolder<?> folder) throws Exception {

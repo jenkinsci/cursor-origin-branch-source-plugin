@@ -2,12 +2,14 @@ package io.jenkins.plugins.cursor_origin_branch_source;
 
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.Filter;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import edu.umd.cs.findbugs.annotations.NonNull;
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwsHeader;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.LocatorAdapter;
@@ -64,7 +66,6 @@ public class MockOriginServer implements Closeable {
     private static final Pattern TOKEN_PATH = Pattern.compile("^/v1/origin/app/installations/([^/]+)/access_tokens$");
     private static final Pattern ANNOTATIONS_PATH = Pattern.compile("^/check-runs/([^/]+)/annotations$");
 
-    private static final String BODY_ATTRIBUTE = "mock-origin-request-body";
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /** Cursor Origin accepts 1-25 annotations per request and stores at most 100 per check run. */
@@ -229,6 +230,7 @@ public class MockOriginServer implements Closeable {
     public static class MockRepo {
         final String owner;
         final String name;
+        final String id;
         final String defaultBranch;
         final List<MockBranch> branches = new ArrayList<>();
         final List<MockPR> pullRequests = new ArrayList<>();
@@ -237,6 +239,7 @@ public class MockOriginServer implements Closeable {
         MockRepo(String owner, String name, String defaultBranch) {
             this.owner = owner;
             this.name = name;
+            this.id = "repo_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
             this.defaultBranch = defaultBranch;
         }
 
@@ -264,6 +267,10 @@ public class MockOriginServer implements Closeable {
 
     /** appId → public key used to verify incoming app-JWTs */
     private final Map<String, PublicKey> appPublicKeys = new ConcurrentHashMap<>();
+    /** appId → the scopes this app is approved for at installation time */
+    private final Map<String, List<String>> appDefaultScopes = new ConcurrentHashMap<>();
+    /** installationId → repo IDs this installation can access; absent means unrestricted */
+    private final Map<String, List<String>> installationAccessibleRepoIds = new ConcurrentHashMap<>();
 
     /** when set, annotation requests are rejected with this status instead of being stored */
     private Integer annotationFailureStatus;
@@ -290,9 +297,27 @@ public class MockOriginServer implements Closeable {
 
     // ── builder API ─────────────────────────────────────────────────────────
 
-    /** Register an app's public key so that JWTs it signs will be accepted. */
-    public MockOriginServer registerApp(String appId, PublicKey publicKey) {
+    /**
+     * Register an app's public key and the scopes it is approved for.
+     *
+     * <p>When a token is requested without explicit scopes, all approved scopes are granted; when
+     * scopes are requested, only the intersection with approved scopes is granted (unsatisfiable
+     * scope requests are silently dropped). Similarly for {@code repositoryIds} when
+     * {@link #registerInstallation} has been called.
+     */
+    MockOriginServer registerApp(String appId, PublicKey publicKey, List<String> approvedScopes) {
         appPublicKeys.put(appId, publicKey);
+        appDefaultScopes.put(appId, List.copyOf(approvedScopes));
+        return this;
+    }
+
+    /**
+     * Restrict an installation to a specific set of repo IDs. If not called, the installation
+     * can access all repos. When a token is requested with repo IDs outside this set, only the
+     * intersection is granted.
+     */
+    MockOriginServer registerInstallation(String installationId, List<String> accessibleRepoIds) {
+        installationAccessibleRepoIds.put(installationId, List.copyOf(accessibleRepoIds));
         return this;
     }
 
@@ -346,7 +371,11 @@ public class MockOriginServer implements Closeable {
 
     // ── lifecycle ────────────────────────────────────────────────────────────
 
-    public String start() throws IOException {
+    String baseUrl() {
+        return baseUrl;
+    }
+
+    String start() throws IOException {
         server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
         var filter = new LogAndDispatchFilter();
         server.createContext("/v1/origin/app/installations/", he -> {})
@@ -389,22 +418,37 @@ public class MockOriginServer implements Closeable {
         }
 
         if ("/v1/origin/installation/repos".equals(path) && "GET".equals(method)) {
-            requireAccessToken(he);
+            requireAccessToken(he, null, "repository:metadata:read");
             handleListInstallationRepos(he);
             return;
         }
 
         Matcher repoMatcher = REPO_PATH.matcher(path);
         if (repoMatcher.matches()) {
-            requireAccessToken(he);
             String owner = repoMatcher.group(1);
             String repoName = repoMatcher.group(2);
             String rest = repoMatcher.group(3); // e.g. "/branches", "/pulls", "/contents", null
+            String requiredScope;
+            if (rest == null || rest.equals("/")) {
+                requiredScope = "repository:metadata:read";
+            } else if (rest.equals("/branches") || rest.equals("/contents") || rest.startsWith("/git/ref/")) {
+                requiredScope = "repository:contents:read";
+            } else if (rest.equals("/pulls") || rest.startsWith("/pulls/")) {
+                requiredScope = "repository:pull_requests:read";
+            } else if (rest.equals("/check-runs")
+                    || ANNOTATIONS_PATH.matcher(rest).matches()) {
+                // Documented on the check-run upsert; the annotations sub-resource is the same write.
+                requiredScope = "repository:checks:write";
+            } else {
+                sendError(he, 404, "unknown path: " + path);
+                return;
+            }
             MockRepo repo = findRepo(owner, repoName);
             if (repo == null) {
                 sendError(he, 404, "repo not found: " + owner + "/" + repoName);
                 return;
             }
+            requireAccessToken(he, repo.id, requiredScope);
             if (rest == null || rest.equals("/")) {
                 handleGetRepo(he, repo);
             } else if (rest.equals("/branches")) {
@@ -442,7 +486,8 @@ public class MockOriginServer implements Closeable {
 
     /**
      * Verifies the incoming app-signed JWT, then issues an {@code oit_} access token signed by
-     * the server's own key.
+     * the server's own key. The POST body may contain {@code scopes} and {@code repositoryIds}
+     * arrays, which are embedded as claims in the issued token for later verification.
      */
     private void handleTokenExchange(HttpExchange he, String installationId) throws IOException {
         String auth = he.getRequestHeaders().getFirst("Authorization");
@@ -451,8 +496,9 @@ public class MockOriginServer implements Closeable {
             return;
         }
         String jwt = auth.substring("Bearer ".length());
+        String appId;
         try {
-            Jwts.parser()
+            var jws = Jwts.parser()
                     .keyLocator(new LocatorAdapter<>() {
                         @Override
                         protected Key locate(JwsHeader header) {
@@ -461,21 +507,95 @@ public class MockOriginServer implements Closeable {
                     })
                     .build()
                     .parseSignedClaims(jwt);
+            appId = jws.getHeader().getKeyId();
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "JWT verification failed", e);
             sendError(he, 403, "invalid JWT: " + e.getMessage());
             return;
         }
 
+        // Parse requested scopes/repositoryIds from the request body
+        List<String> requestedScopes = new ArrayList<>();
+        List<String> requestedRepoIds = new ArrayList<>();
+        byte[] bodyBytes = he.getRequestBody().readAllBytes();
+        if (bodyBytes.length > 0) {
+            try (var parser = jsonFactory.createParser(bodyBytes)) {
+                while (parser.nextToken() != null) {
+                    if (parser.currentToken() == JsonToken.FIELD_NAME) {
+                        String field = parser.currentName();
+                        parser.nextToken();
+                        if ("scopes".equals(field) && parser.currentToken() == JsonToken.START_ARRAY) {
+                            while (parser.nextToken() != JsonToken.END_ARRAY) {
+                                if (parser.currentToken() == JsonToken.VALUE_STRING) {
+                                    requestedScopes.add(parser.getText());
+                                }
+                            }
+                        } else if ("repositoryIds".equals(field) && parser.currentToken() == JsonToken.START_ARRAY) {
+                            while (parser.nextToken() != JsonToken.END_ARRAY) {
+                                if (parser.currentToken() == JsonToken.VALUE_STRING) {
+                                    requestedRepoIds.add(parser.getText());
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Failed to parse token exchange body", e);
+                sendError(he, 400, "invalid request body: " + e.getMessage());
+                return;
+            }
+        }
+
+        // Effective scopes = requested ∩ approved; if no scopes requested, use all approved
+        List<String> approvedScopes = appDefaultScopes.getOrDefault(appId, List.of());
+        List<String> effectiveScopes;
+        if (requestedScopes.isEmpty()) {
+            effectiveScopes = new ArrayList<>(approvedScopes);
+        } else {
+            effectiveScopes = new ArrayList<>(requestedScopes);
+            effectiveScopes.retainAll(approvedScopes);
+            if (effectiveScopes.isEmpty()) {
+                sendError(he, 403, "no requested scopes are approved for this app");
+                return;
+            }
+        }
+        // repository:metadata:read is always present in any non-empty scoped token
+        if (!effectiveScopes.isEmpty() && !effectiveScopes.contains("repository:metadata:read")) {
+            effectiveScopes.add("repository:metadata:read");
+        }
+
+        // Effective repoIds = requested ∩ installation's accessible repos; absent = unrestricted
+        List<String> accessibleRepos = installationAccessibleRepoIds.get(installationId);
+        List<String> effectiveRepoIds;
+        if (accessibleRepos == null) {
+            effectiveRepoIds = new ArrayList<>(requestedRepoIds);
+        } else if (requestedRepoIds.isEmpty()) {
+            // No specific repos requested: grant access to all repos accessible to this installation
+            effectiveRepoIds = new ArrayList<>(accessibleRepos);
+        } else {
+            effectiveRepoIds = new ArrayList<>(requestedRepoIds);
+            effectiveRepoIds.retainAll(accessibleRepos);
+            if (effectiveRepoIds.isEmpty()) {
+                // None of the requested repos are accessible to this installation
+                sendError(he, 403, "no requested repositoryIds are accessible to this installation");
+                return;
+            }
+        }
+
         Instant now = Instant.now();
         Instant exp = now.plus(Duration.ofHours(1));
-        String payload = Jwts.builder()
+        var builder = Jwts.builder()
                 .subject(installationId)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(exp))
-                .id(UUID.randomUUID().toString())
-                .signWith(serverKeyPair.getPrivate())
-                .compact();
+                .id(UUID.randomUUID().toString());
+        if (!effectiveScopes.isEmpty()) {
+            builder.claim("scopes", effectiveScopes);
+        }
+        if (!effectiveRepoIds.isEmpty()) {
+            builder.claim("repositoryIds", effectiveRepoIds);
+        }
+        String payload = builder.signWith(serverKeyPair.getPrivate()).compact();
         String accessToken = "oit_" + payload;
 
         sendJson(he, 200, gen -> {
@@ -486,17 +606,41 @@ public class MockOriginServer implements Closeable {
         });
     }
 
-    private void requireAccessToken(HttpExchange he) {
+    /**
+     * Verifies the Bearer token in the request, checks required scopes, and (when {@code repoId}
+     * is non-null) enforces that a scoped token's {@code repositoryIds} claim includes that ID.
+     * Unrestricted tokens (absent/empty claims) pass unconditionally.
+     * {@code repository:contents:write} implicitly satisfies {@code repository:contents:read}.
+     */
+    private void requireAccessToken(HttpExchange he, String repoId, String... requiredScopes) {
         String auth = he.getRequestHeaders().getFirst("Authorization");
         if (auth == null || !auth.startsWith("Bearer ")) {
             throw new HaltException(401, "missing Bearer token");
         }
         String token = auth.substring("Bearer ".length());
+        String jwtPart = token.startsWith("oit_") ? token.substring(4) : token;
+        Claims payload;
         try {
-            String jwtPart = token.startsWith("oit_") ? token.substring(4) : token;
-            Jwts.parser().verifyWith(serverKeyPair.getPublic()).build().parseSignedClaims(jwtPart);
+            payload = Jwts.parser()
+                    .verifyWith(serverKeyPair.getPublic())
+                    .build()
+                    .parseSignedClaims(jwtPart)
+                    .getPayload();
         } catch (Exception e) {
             throw new HaltException(401, "invalid access token");
+        }
+        @SuppressWarnings("unchecked")
+        List<String> repoIds = (List<String>) payload.get("repositoryIds");
+        if (repoId != null && repoIds != null && !repoIds.isEmpty() && !repoIds.contains(repoId)) {
+            throw new HaltException(403, "token repositoryIds does not include repo " + repoId);
+        }
+        @SuppressWarnings("unchecked")
+        List<String> scopes = (List<String>) payload.get("scopes");
+        if (scopes == null || scopes.isEmpty()) return;
+        for (String required : requiredScopes) {
+            if (scopes.contains(required)) continue;
+            if ("repository:contents:read".equals(required) && scopes.contains("repository:contents:write")) continue;
+            throw new HaltException(403, "token missing required scope: " + required);
         }
     }
 
@@ -904,10 +1048,11 @@ public class MockOriginServer implements Closeable {
 
     private void writeRepoObject(JsonGenerator gen, MockRepo repo) throws IOException {
         gen.writeStartObject();
+        gen.writeStringField("id", repo.id);
         gen.writeStringField("name", repo.name);
         gen.writeStringField("fullName", repo.owner + "/" + repo.name);
         gen.writeStringField("defaultBranch", repo.defaultBranch);
-        gen.writeStringField("cloneUrl", "https://origin.cursor.com/" + repo.owner + "/" + repo.name + ".git");
+        gen.writeStringField("cloneUrl", OriginSCMSource.GIT_BASE_URL + "/" + repo.owner + "/" + repo.name + ".git");
         gen.writeObjectFieldStart("owner");
         gen.writeStringField("slug", repo.owner);
         gen.writeEndObject();
@@ -951,21 +1096,12 @@ public class MockOriginServer implements Closeable {
     }
 
     /**
-     * Consumes the request body and stashes it on the exchange, so that handlers can read it after
-     * the filter has drained the stream.
+     * Parses the request body of the endpoint being handled. Nothing drains the body before dispatch,
+     * so each handler reads its own, once.
      */
-    private static void captureBody(HttpExchange he) {
-        try (InputStream is = he.getRequestBody()) {
-            he.setAttribute(BODY_ATTRIBUTE, is.readAllBytes());
-        } catch (IOException ignored) {
-            he.setAttribute(BODY_ATTRIBUTE, new byte[0]);
-        }
-    }
-
     private static JsonNode requestBody(HttpExchange he) {
-        byte[] body = (byte[]) he.getAttribute(BODY_ATTRIBUTE);
-        try {
-            return MAPPER.readTree(body == null ? new byte[0] : body);
+        try (InputStream is = he.getRequestBody()) {
+            return MAPPER.readTree(is);
         } catch (IOException e) {
             throw new HaltException(400, "malformed JSON request body");
         }
@@ -996,7 +1132,6 @@ public class MockOriginServer implements Closeable {
         @Override
         public void doFilter(HttpExchange he, Chain chain) throws IOException {
             LOGGER.fine(() -> he.getRequestMethod() + " " + he.getRequestURI());
-            captureBody(he);
             try {
                 dispatch(he);
             } catch (HaltException x) {
