@@ -3,6 +3,8 @@ package io.jenkins.plugins.cursor_origin_branch_source;
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonToken;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.Filter;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -14,6 +16,7 @@ import io.jsonwebtoken.LocatorAdapter;
 import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -29,6 +32,7 @@ import java.security.PublicKey;
 import java.security.Signature;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
@@ -54,18 +58,28 @@ import java.util.regex.Pattern;
  * <p>All other state (repos, branches, PRs, file trees) lives in memory and is populated via the
  * {@code add*()} builder methods before the test runs.
  */
-class MockOriginServer implements Closeable {
+public class MockOriginServer implements Closeable {
 
     private static final Logger LOGGER = Logger.getLogger(MockOriginServer.class.getName());
 
     private static final Pattern REPO_PATH = Pattern.compile("^/v1/origin/repos/([^/]+)/([^/]+)(/.*)?$");
     private static final Pattern TOKEN_PATH = Pattern.compile("^/v1/origin/app/installations/([^/]+)/access_tokens$");
+    private static final Pattern ANNOTATIONS_PATH = Pattern.compile("^/check-runs/([^/]+)/annotations$");
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /** Cursor Origin accepts 1-25 annotations per request and stores at most 100 per check run. */
+    private static final int MIN_ANNOTATION_BATCH = 1;
+
+    private static final int MAX_ANNOTATION_BATCH = 25;
+    private static final int MAX_ANNOTATIONS_PER_CHECK_RUN = 100;
 
     // ── in-memory data model ────────────────────────────────────────────────
 
-    record MockPR(int number, String headBranch, String headSha, String baseBranch, String baseSha, String title) {}
+    public record MockPR(
+            int number, String headBranch, String headSha, String baseBranch, String baseSha, String title) {}
 
-    static class MockBranch {
+    public static class MockBranch {
         final String name;
         final String sha;
         /** path → UTF-8 content; looked up by SHA or name when serving contents requests */
@@ -79,37 +93,148 @@ class MockOriginServer implements Closeable {
             this.sha = sha;
         }
 
-        MockBranch file(String path) {
+        public MockBranch file(String path) {
             files.put(path, "");
             return this;
         }
 
-        MockBranch file(String path, String content) {
+        public MockBranch file(String path, String content) {
             files.put(path, content);
             return this;
         }
 
-        MockBranch branch(String branchName, String branchSha) {
+        public MockBranch branch(String branchName, String branchSha) {
             return repo.branch(branchName, branchSha);
         }
 
-        MockRepo pr(int number, String headBranch, String headSha, String baseBranch, String baseSha) {
+        public MockRepo pr(int number, String headBranch, String headSha, String baseBranch, String baseSha) {
             return pr(number, headBranch, headSha, baseBranch, baseSha, "PR #" + number);
         }
 
-        MockRepo pr(int number, String headBranch, String headSha, String baseBranch, String baseSha, String title) {
-            repo.pullRequests.add(new MockPR(number, headBranch, headSha, baseBranch, baseSha, title));
-            return repo;
+        public MockRepo pr(
+                int number, String headBranch, String headSha, String baseBranch, String baseSha, String title) {
+            return repo.pr(number, headBranch, headSha, baseBranch, baseSha, title);
         }
     }
 
-    static class MockRepo {
+    /** An annotation appended to a {@link MockCheckRun}. */
+    public record MockAnnotation(
+            String level, String message, String title, String path, Integer startLine, Integer endLine) {}
+
+    /**
+     * A check run as reported by the plugin. Cursor Origin upserts on
+     * {@code (repository, head SHA, suite key, check key)}, so repeated reports of the same check
+     * update the same instance and are recorded in {@link #reportedStates()}.
+     */
+    public static class MockCheckRun {
+        private final String id;
+        private final String headSha;
+        private final String suiteKey;
+        private final String suiteName;
+        private final String key;
+        private String name;
+        private String status;
+        private String conclusion;
+        private String detailsUrl;
+        private String externalId;
+        private String startedAt;
+        private String completedAt;
+        private String outputTitle;
+        private String outputSummary;
+        private String outputText;
+        private OffsetDateTime externalUpdatedAt;
+        private final List<MockAnnotation> annotations = new ArrayList<>();
+        private final List<String> reportedStates = new ArrayList<>();
+
+        MockCheckRun(String id, String headSha, String suiteKey, String suiteName, String key) {
+            this.id = id;
+            this.headSha = headSha;
+            this.suiteKey = suiteKey;
+            this.suiteName = suiteName;
+            this.key = key;
+        }
+
+        public String getId() {
+            return id;
+        }
+
+        public String getHeadSha() {
+            return headSha;
+        }
+
+        public String getSuiteKey() {
+            return suiteKey;
+        }
+
+        public String getSuiteName() {
+            return suiteName;
+        }
+
+        public String getKey() {
+            return key;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public String getStatus() {
+            return status;
+        }
+
+        public String getConclusion() {
+            return conclusion;
+        }
+
+        public String getDetailsUrl() {
+            return detailsUrl;
+        }
+
+        public String getExternalId() {
+            return externalId;
+        }
+
+        public String getStartedAt() {
+            return startedAt;
+        }
+
+        public String getCompletedAt() {
+            return completedAt;
+        }
+
+        public String getOutputTitle() {
+            return outputTitle;
+        }
+
+        public String getOutputSummary() {
+            return outputSummary;
+        }
+
+        public String getOutputText() {
+            return outputText;
+        }
+
+        public List<MockAnnotation> getAnnotations() {
+            return List.copyOf(annotations);
+        }
+
+        /**
+         * The status of every report of this check run, in order, with the conclusion appended once
+         * it completes, e.g. {@code ["queued", "in_progress", "completed/success"]}.
+         */
+        public List<String> reportedStates() {
+            return List.copyOf(reportedStates);
+        }
+    }
+
+    public static class MockRepo {
         final String owner;
         final String name;
         final String id;
         final String defaultBranch;
         final List<MockBranch> branches = new ArrayList<>();
         final List<MockPR> pullRequests = new ArrayList<>();
+        final List<MockCheckRun> checkRuns = new ArrayList<>();
 
         MockRepo(String owner, String name, String defaultBranch) {
             this.owner = owner;
@@ -118,17 +243,18 @@ class MockOriginServer implements Closeable {
             this.defaultBranch = defaultBranch;
         }
 
-        MockBranch branch(String branchName, String sha) {
+        public MockBranch branch(String branchName, String sha) {
             MockBranch b = new MockBranch(this, branchName, sha);
             branches.add(b);
             return b;
         }
 
-        MockRepo pr(int number, String headBranch, String headSha, String baseBranch, String baseSha) {
+        public MockRepo pr(int number, String headBranch, String headSha, String baseBranch, String baseSha) {
             return pr(number, headBranch, headSha, baseBranch, baseSha, "PR #" + number);
         }
 
-        MockRepo pr(int number, String headBranch, String headSha, String baseBranch, String baseSha, String title) {
+        public MockRepo pr(
+                int number, String headBranch, String headSha, String baseBranch, String baseSha, String title) {
             pullRequests.add(new MockPR(number, headBranch, headSha, baseBranch, baseSha, title));
             return this;
         }
@@ -146,6 +272,9 @@ class MockOriginServer implements Closeable {
     /** installationId → repo IDs this installation can access; absent means unrestricted */
     private final Map<String, List<String>> installationAccessibleRepoIds = new ConcurrentHashMap<>();
 
+    /** when set, annotation requests are rejected with this status instead of being stored */
+    private Integer annotationFailureStatus;
+
     /** key pair used to sign / verify access tokens */
     private final KeyPair serverKeyPair;
 
@@ -153,7 +282,7 @@ class MockOriginServer implements Closeable {
     private HttpServer server;
     private String baseUrl;
 
-    MockOriginServer() {
+    public MockOriginServer() {
         try {
             KeyPairGenerator gen = KeyPairGenerator.getInstance("Ed25519");
             serverKeyPair = gen.generateKeyPair();
@@ -193,10 +322,36 @@ class MockOriginServer implements Closeable {
     }
 
     /** Add a mock repo. Use the returned {@link MockRepo} to populate branches, PRs, files. */
-    MockRepo addRepo(@NonNull String owner, @NonNull String name, @NonNull String defaultBranch) {
+    public MockRepo addRepo(@NonNull String owner, @NonNull String name, @NonNull String defaultBranch) {
         MockRepo repo = new MockRepo(owner, name, defaultBranch);
         repos.computeIfAbsent(owner, k -> new HashMap<>()).put(name, repo);
         return repo;
+    }
+
+    /** Makes every subsequent annotation request fail, to exercise the publisher's error handling. */
+    public MockOriginServer rejectAnnotationsWith(int status) {
+        annotationFailureStatus = status;
+        return this;
+    }
+
+    // ── assertions ──────────────────────────────────────────────────────────
+
+    /** Every check run reported against a repo, in the order it was first reported. */
+    public List<MockCheckRun> checkRuns(@NonNull String owner, @NonNull String repoName) {
+        MockRepo repo = findRepo(owner, repoName);
+        return repo == null ? List.of() : List.copyOf(repo.checkRuns);
+    }
+
+    /** The single check run reported under {@code checkKey}, failing if there is not exactly one. */
+    public MockCheckRun checkRun(@NonNull String owner, @NonNull String repoName, @NonNull String checkKey) {
+        List<MockCheckRun> matching = checkRuns(owner, repoName).stream()
+                .filter(run -> run.key.equals(checkKey))
+                .toList();
+        if (matching.size() != 1) {
+            throw new AssertionError(
+                    "expected exactly one check run with key '" + checkKey + "' but found " + matching);
+        }
+        return matching.get(0);
     }
 
     /** Replace an existing repo with a new one (for simulating mid-test state changes). */
@@ -280,6 +435,10 @@ class MockOriginServer implements Closeable {
                 requiredScope = "repository:contents:read";
             } else if (rest.equals("/pulls") || rest.startsWith("/pulls/")) {
                 requiredScope = "repository:pull_requests:read";
+            } else if (rest.equals("/check-runs")
+                    || ANNOTATIONS_PATH.matcher(rest).matches()) {
+                // Documented on the check-run upsert; the annotations sub-resource is the same write.
+                requiredScope = "repository:checks:write";
             } else {
                 sendError(he, 404, "unknown path: " + path);
                 return;
@@ -306,6 +465,12 @@ class MockOriginServer implements Closeable {
                 }
             } else if (rest.equals("/contents")) {
                 handleGetContents(he, repo);
+            } else if (rest.equals("/check-runs") && "POST".equals(method)) {
+                handlePostCheckRun(he, repo);
+            } else if ("POST".equals(method) && ANNOTATIONS_PATH.matcher(rest).matches()) {
+                Matcher annotationMatcher = ANNOTATIONS_PATH.matcher(rest);
+                annotationMatcher.matches();
+                handleCreateCheckRunAnnotations(he, repo, annotationMatcher.group(1));
             } else if (rest.startsWith("/git/ref/")) {
                 handleGetGitRef(he, repo, rest.substring("/git/ref/".length()));
             } else {
@@ -618,6 +783,140 @@ class MockOriginServer implements Closeable {
         });
     }
 
+    /**
+     * Upserts a check suite and check run, rejecting requests that break the parts of the Origin
+     * contract a publisher has to get right: the required identity fields, and a conclusion exactly
+     * when the check run has completed.
+     */
+    private void handlePostCheckRun(HttpExchange he, MockRepo repo) throws IOException {
+        JsonNode body = requestBody(he);
+        String headSha = requireText(body, "headSha");
+
+        JsonNode suite = body.path("checkSuite");
+        String suiteKey = requireText(suite, "key");
+        String suiteName = requireText(suite, "name");
+        requireText(suite, "externalId");
+
+        JsonNode run = body.path("checkRun");
+        String key = requireText(run, "key");
+        String status = requireText(run, "status");
+        String conclusion = run.path("conclusion").asText(null);
+        if ("completed".equals(status) && (conclusion == null || conclusion.isBlank())) {
+            throw new HaltException(400, "conclusion is required when status is completed");
+        }
+        if (!"completed".equals(status) && conclusion != null && !conclusion.isBlank()) {
+            throw new HaltException(400, "conclusion is only allowed when status is completed");
+        }
+        OffsetDateTime externalUpdatedAt = OffsetDateTime.parse(requireText(run, "externalUpdatedAt"));
+        requireText(run, "externalId");
+
+        MockCheckRun checkRun = upsertCheckRun(repo, headSha, suiteKey, suiteName, key);
+        if (checkRun.externalUpdatedAt != null && externalUpdatedAt.isBefore(checkRun.externalUpdatedAt)) {
+            // A stale report must not overwrite newer state; the stored state is returned unchanged.
+            MockCheckRun unchanged = checkRun;
+            sendJson(he, 200, gen -> {
+                gen.writeStartObject();
+                writeCheckRunObject(gen, unchanged);
+                gen.writeEndObject();
+            });
+            return;
+        }
+        checkRun.externalUpdatedAt = externalUpdatedAt;
+        checkRun.name = requireText(run, "name");
+        checkRun.status = status;
+        checkRun.conclusion = conclusion;
+        checkRun.detailsUrl = run.path("detailsUrl").asText(null);
+        checkRun.externalId = run.path("externalId").asText(null);
+        checkRun.startedAt = run.path("startedAt").asText(null);
+        checkRun.completedAt = run.path("completedAt").asText(null);
+        JsonNode output = run.path("output");
+        checkRun.outputTitle = output.path("title").asText(null);
+        checkRun.outputSummary = output.path("summary").asText(null);
+        checkRun.outputText = output.path("text").asText(null);
+        checkRun.reportedStates.add(conclusion == null ? status : status + "/" + conclusion);
+
+        sendJson(he, 200, gen -> {
+            gen.writeStartObject();
+            gen.writeObjectFieldStart("checkSuite");
+            gen.writeStringField("id", "crg_" + suiteKey.hashCode());
+            gen.writeStringField("key", suiteKey);
+            gen.writeStringField("name", suiteName);
+            gen.writeStringField("sha", headSha);
+            gen.writeEndObject();
+            writeCheckRunObject(gen, checkRun);
+            gen.writeEndObject();
+        });
+    }
+
+    /** Cursor Origin matches a repeated report on {@code (head SHA, suite key, check key)}. */
+    private MockCheckRun upsertCheckRun(MockRepo repo, String headSha, String suiteKey, String suiteName, String key) {
+        for (MockCheckRun existing : repo.checkRuns) {
+            if (existing.headSha.equals(headSha) && existing.suiteKey.equals(suiteKey) && existing.key.equals(key)) {
+                return existing;
+            }
+        }
+        MockCheckRun created = new MockCheckRun("cr_" + (repo.checkRuns.size() + 1), headSha, suiteKey, suiteName, key);
+        repo.checkRuns.add(created);
+        return created;
+    }
+
+    /**
+     * Appends annotations to a check run, enforcing the batch size and per-run cap so that a
+     * publisher that ignores them fails the test rather than the production API.
+     */
+    private void handleCreateCheckRunAnnotations(HttpExchange he, MockRepo repo, String checkRunId) throws IOException {
+        MockCheckRun checkRun = repo.checkRuns.stream()
+                .filter(run -> run.id.equals(checkRunId))
+                .findFirst()
+                .orElseThrow(() -> new HaltException(404, "check run not found: " + checkRunId));
+
+        if (annotationFailureStatus != null) {
+            throw new HaltException(annotationFailureStatus, "annotations rejected by test configuration");
+        }
+
+        JsonNode annotations = requestBody(he).path("annotations");
+        if (!annotations.isArray()
+                || annotations.size() < MIN_ANNOTATION_BATCH
+                || annotations.size() > MAX_ANNOTATION_BATCH) {
+            throw new HaltException(
+                    400,
+                    "annotations must contain " + MIN_ANNOTATION_BATCH + " to " + MAX_ANNOTATION_BATCH + " entries");
+        }
+        if (checkRun.annotations.size() + annotations.size() > MAX_ANNOTATIONS_PER_CHECK_RUN) {
+            throw new HaltException(
+                    429, "a check run stores at most " + MAX_ANNOTATIONS_PER_CHECK_RUN + " annotations");
+        }
+
+        List<MockAnnotation> created = new ArrayList<>();
+        for (JsonNode annotation : annotations) {
+            JsonNode location = annotation.path("location");
+            created.add(new MockAnnotation(
+                    requireText(annotation, "annotationLevel"),
+                    requireText(annotation, "message"),
+                    annotation.path("title").asText(null),
+                    location.path("path").asText(null),
+                    location.has("startLine") ? location.get("startLine").asInt() : null,
+                    location.has("endLine") ? location.get("endLine").asInt() : null));
+        }
+        checkRun.annotations.addAll(created);
+
+        sendJson(he, 200, gen -> {
+            gen.writeStartObject();
+            gen.writeArrayFieldStart("annotations");
+            for (int i = 0; i < created.size(); i++) {
+                MockAnnotation annotation = created.get(i);
+                gen.writeStartObject();
+                gen.writeStringField("id", "cra_" + i);
+                gen.writeStringField("checkRunId", checkRun.id);
+                gen.writeStringField("annotationLevel", annotation.level());
+                gen.writeStringField("message", annotation.message());
+                gen.writeEndObject();
+            }
+            gen.writeEndArray();
+            gen.writeEndObject();
+        });
+    }
+
     private void handleGetPullRequest(HttpExchange he, MockRepo repo, int number) throws IOException {
         for (MockPR pr : repo.pullRequests) {
             if (pr.number() == number) {
@@ -728,6 +1027,25 @@ class MockOriginServer implements Closeable {
         void write(JsonGenerator gen) throws IOException;
     }
 
+    private void writeCheckRunObject(JsonGenerator gen, MockCheckRun checkRun) throws IOException {
+        gen.writeObjectFieldStart("checkRun");
+        gen.writeStringField("id", checkRun.id);
+        gen.writeStringField("sha", checkRun.headSha);
+        gen.writeStringField("key", checkRun.key);
+        gen.writeStringField("name", checkRun.name);
+        gen.writeStringField("status", checkRun.status);
+        if (checkRun.conclusion != null) {
+            gen.writeStringField("conclusion", checkRun.conclusion);
+        }
+        if (checkRun.detailsUrl != null) {
+            gen.writeStringField("detailsUrl", checkRun.detailsUrl);
+        }
+        if (checkRun.externalId != null) {
+            gen.writeStringField("externalId", checkRun.externalId);
+        }
+        gen.writeEndObject();
+    }
+
     private void writeRepoObject(JsonGenerator gen, MockRepo repo) throws IOException {
         gen.writeStartObject();
         gen.writeStringField("id", repo.id);
@@ -775,6 +1093,27 @@ class MockOriginServer implements Closeable {
             }
         }
         return null;
+    }
+
+    /**
+     * Parses the request body of the endpoint being handled. Nothing drains the body before dispatch,
+     * so each handler reads its own, once.
+     */
+    private static JsonNode requestBody(HttpExchange he) {
+        try (InputStream is = he.getRequestBody()) {
+            return MAPPER.readTree(is);
+        } catch (IOException e) {
+            throw new HaltException(400, "malformed JSON request body");
+        }
+    }
+
+    /** Reads a required string field, halting with 400 when it is missing or blank. */
+    private static String requireText(JsonNode node, String field) {
+        String value = node.path(field).asText(null);
+        if (value == null || value.isBlank()) {
+            throw new HaltException(400, "missing required field: " + field);
+        }
+        return value;
     }
 
     static final class HaltException extends RuntimeException {

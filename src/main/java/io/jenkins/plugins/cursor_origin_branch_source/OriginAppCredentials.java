@@ -183,6 +183,16 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
         return doMintToken(appId, installationId, privateKey.getPlainText(), null, "controller");
     }
 
+    /**
+     * Creates an API client authenticated as this app installation.
+     *
+     * <p>Each call mints a fresh installation access token, so callers should reuse the returned
+     * client for the duration of a logical operation rather than calling this per request.
+     */
+    public OriginServiceApi api() {
+        return apiWithToken(mintToken());
+    }
+
     static OriginServiceApi apiWithToken(String bearerToken) {
         ApiClient client = new ApiClient();
         client.updateBaseUri(API_BASE_URI);

@@ -27,20 +27,20 @@ import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
  * {@code oit_} access token. All other API responses are served from in-memory state.
  */
 @WithJenkins
-abstract class MockOriginServerTestBase {
+public abstract class MockOriginServerTestBase {
 
     @RegisterExtension
     private static final BuildWatcherExtension BUILD_WATCHER = new BuildWatcherExtension();
 
-    static final String OWNER = "acme-corp";
-    static final String APP_ID = "test-app-1";
-    static final String INSTALLATION_ID = "inst-42";
-    static final String CREDS_ID = "origin-test-creds";
+    protected static final String OWNER = "acme-corp";
+    protected static final String APP_ID = "test-app-1";
+    protected static final String INSTALLATION_ID = "inst-42";
+    protected static final String CREDS_ID = "origin-test-creds";
 
-    JenkinsRule r;
+    protected JenkinsRule r;
 
     @AutoClose
-    MockOriginServer mockServer;
+    protected MockOriginServer mockServer;
 
     @AutoClose
     MockGitServer mockGitServer;
@@ -49,9 +49,10 @@ abstract class MockOriginServerTestBase {
 
     private String savedBaseUri;
     private String savedGitBaseUrl;
+    private OriginAppCredentials credentials;
 
     @BeforeEach
-    void setUp(JenkinsRule r) throws Exception {
+    protected void setUp(JenkinsRule r) throws Exception {
         this.r = r;
         KeyPairGenerator gen = KeyPairGenerator.getInstance("Ed25519");
         appKeyPair = gen.generateKeyPair();
@@ -72,7 +73,7 @@ abstract class MockOriginServerTestBase {
         savedGitBaseUrl = OriginSCMSource.GIT_BASE_URL;
         OriginSCMSource.GIT_BASE_URL = gitUrl;
 
-        OriginAppCredentials creds = new OriginAppCredentials(
+        credentials = new OriginAppCredentials(
                 CredentialsScope.GLOBAL,
                 CREDS_ID,
                 "Test app credentials",
@@ -81,18 +82,23 @@ abstract class MockOriginServerTestBase {
                 Secret.fromString(toPkcs8Pem(appKeyPair)));
         CredentialsStore store =
                 CredentialsProvider.lookupStores(r.jenkins).iterator().next();
-        store.addCredentials(Domain.global(), creds);
+        store.addCredentials(Domain.global(), credentials);
 
         r.jenkins.setQuietPeriod(0);
     }
 
+    /** The app credentials registered in the Jenkins credentials store under {@link #CREDS_ID}. */
+    protected OriginAppCredentials credentials() {
+        return credentials;
+    }
+
     @AfterEach
-    void tearDown() {
+    protected void tearDown() {
         OriginAppCredentials.API_BASE_URI = savedBaseUri;
         OriginSCMSource.GIT_BASE_URL = savedGitBaseUrl;
     }
 
-    static void showIndexing(ComputedFolder<?> folder) throws Exception {
+    protected static void showIndexing(ComputedFolder<?> folder) throws Exception {
         FolderComputation<?> computation = folder.getComputation();
         System.out.println("---%<--- " + computation.getUrl());
         computation.writeWholeLogTo(System.out);
@@ -100,7 +106,7 @@ abstract class MockOriginServerTestBase {
     }
 
     /** Encodes an Ed25519 private key as a PKCS#8 PEM string (what the credentials class parses). */
-    static String toPkcs8Pem(KeyPair keyPair) {
+    protected static String toPkcs8Pem(KeyPair keyPair) {
         byte[] encoded = keyPair.getPrivate().getEncoded();
         String b64 = Base64.getMimeEncoder(64, new byte[] {'\n'}).encodeToString(encoded);
         return "-----BEGIN PRIVATE KEY-----\n" + b64 + "\n-----END PRIVATE KEY-----\n";
