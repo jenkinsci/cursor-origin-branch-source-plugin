@@ -263,7 +263,7 @@ class MockOriginServer implements Closeable {
         }
 
         if ("/v1/origin/installation/repos".equals(path) && "GET".equals(method)) {
-            requireAccessToken(he, "repository:metadata:read");
+            requireAccessToken(he, null, "repository:metadata:read");
             handleListInstallationRepos(he);
             return;
         }
@@ -273,7 +273,6 @@ class MockOriginServer implements Closeable {
             String owner = repoMatcher.group(1);
             String repoName = repoMatcher.group(2);
             String rest = repoMatcher.group(3); // e.g. "/branches", "/pulls", "/contents", null
-            // Determine required scope first so auth is checked before repo lookup
             String requiredScope;
             if (rest == null || rest.equals("/")) {
                 requiredScope = "repository:metadata:read";
@@ -285,12 +284,12 @@ class MockOriginServer implements Closeable {
                 sendError(he, 404, "unknown path: " + path);
                 return;
             }
-            requireAccessToken(he, requiredScope);
             MockRepo repo = findRepo(owner, repoName);
             if (repo == null) {
                 sendError(he, 404, "repo not found: " + owner + "/" + repoName);
                 return;
             }
+            requireAccessToken(he, repo.id, requiredScope);
             if (rest == null || rest.equals("/")) {
                 handleGetRepo(he, repo);
             } else if (rest.equals("/branches")) {
@@ -443,12 +442,12 @@ class MockOriginServer implements Closeable {
     }
 
     /**
-     * Verifies the Bearer token in the request, then checks that the token's {@code scopes} claim
-     * contains every {@code requiredScope}. Unrestricted tokens (absent/empty {@code scopes}) pass
-     * unconditionally. {@code repository:contents:write} implicitly satisfies
-     * {@code repository:contents:read}.
+     * Verifies the Bearer token in the request, checks required scopes, and (when {@code repoId}
+     * is non-null) enforces that a scoped token's {@code repositoryIds} claim includes that ID.
+     * Unrestricted tokens (absent/empty claims) pass unconditionally.
+     * {@code repository:contents:write} implicitly satisfies {@code repository:contents:read}.
      */
-    private void requireAccessToken(HttpExchange he, String... requiredScopes) {
+    private void requireAccessToken(HttpExchange he, String repoId, String... requiredScopes) {
         String auth = he.getRequestHeaders().getFirst("Authorization");
         if (auth == null || !auth.startsWith("Bearer ")) {
             throw new HaltException(401, "missing Bearer token");
@@ -464,6 +463,11 @@ class MockOriginServer implements Closeable {
                     .getPayload();
         } catch (Exception e) {
             throw new HaltException(401, "invalid access token");
+        }
+        @SuppressWarnings("unchecked")
+        List<String> repoIds = (List<String>) payload.get("repositoryIds");
+        if (repoId != null && repoIds != null && !repoIds.isEmpty() && !repoIds.contains(repoId)) {
+            throw new HaltException(403, "token repositoryIds does not include repo " + repoId);
         }
         @SuppressWarnings("unchecked")
         List<String> scopes = (List<String>) payload.get("scopes");
