@@ -1,19 +1,24 @@
 package io.jenkins.plugins.cursor_origin_branch_source;
 
 import com.cloudbees.plugins.credentials.CredentialsDescriptor;
+import com.cloudbees.plugins.credentials.CredentialsNameProvider;
 import com.cloudbees.plugins.credentials.CredentialsScope;
 import com.cloudbees.plugins.credentials.CredentialsSnapshotTaker;
 import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
 import com.cloudbees.plugins.credentials.impl.BaseStandardCredentials;
+import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import hudson.Extension;
+import hudson.ExtensionList;
+import hudson.ExtensionPoint;
 import hudson.model.Run;
+import hudson.plugins.git.GitSCM;
+import hudson.plugins.git.UserRemoteConfig;
 import hudson.remoting.Channel;
 import hudson.util.Secret;
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.ApiClient;
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.ApiException;
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.api.OriginServiceApi;
-import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model.InstallationAccessToken;
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.model.OriginServiceCreateInstallationAccessTokenRequest;
 import io.jsonwebtoken.Jwts;
 import java.io.Serial;
@@ -24,10 +29,19 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.Date;
+import java.util.List;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 import jenkins.security.SlaveToMasterCallable;
 import jenkins.util.JenkinsJVM;
+import org.jenkinsci.plugins.variant.OptionalExtension;
+import org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition;
+import org.jenkinsci.plugins.workflow.job.WorkflowJob;
+import org.jenkinsci.plugins.workflow.multibranch.BranchJobProperty;
+import org.jenkinsci.plugins.workflow.multibranch.SCMVar;
+import org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject;
 import org.kohsuke.stapler.DataBoundConstructor;
+import org.kohsuke.stapler.DataBoundSetter;
 
 public class OriginAppCredentials extends BaseStandardCredentials implements StandardUsernamePasswordCredentials {
 
@@ -42,6 +56,12 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
     private final String appId;
     private final String installationId;
     private final Secret privateKey;
+    private boolean unrestricted;
+
+    public record Repo(String repoOwner, String repository) implements Serializable {}
+
+    @CheckForNull
+    Repo repo;
 
     @DataBoundConstructor
     public OriginAppCredentials(
@@ -69,6 +89,15 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
         return privateKey;
     }
 
+    @DataBoundSetter
+    public void setUnrestricted(boolean unrestricted) {
+        this.unrestricted = unrestricted;
+    }
+
+    public boolean isUnrestricted() {
+        return unrestricted;
+    }
+
     @NonNull
     @Override
     public String getUsername() {
@@ -78,20 +107,80 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
     @NonNull
     @Override
     public Secret getPassword() {
+        checkRestriction();
         return Secret.fromString(mintToken());
     }
 
+    private void checkRestriction() throws SecurityException {
+        if (!unrestricted && repo == null) {
+            throw new SecurityException("Cannot use restricted credentials " + CredentialsNameProvider.name(this)
+                    + " without known repository");
+        }
+    }
+
     @Override
-    public OriginAppCredentials forRun(Run<?, ?> run) {
-        // TODO: infer repository context from OriginSCMSource once that class exists
+    public OriginAppCredentials forRun(Run<?, ?> build) {
+        if (unrestricted) {
+            return this;
+        }
+        for (var contextualizer : ExtensionList.lookup(Contextualizer.class)) {
+            var r = contextualizer.repoOf(build);
+            if (r != null) {
+                LOGGER.fine(() -> "found " + r + " in " + build);
+                var clone = new OriginAppCredentials(
+                        getScope(), getId(), getDescription(), appId, installationId, privateKey);
+                clone.repo = r;
+                return clone;
+            }
+        }
+        LOGGER.fine(() -> "found nothing for " + build);
         return this;
+    }
+
+    public interface Contextualizer extends ExtensionPoint {
+        @CheckForNull
+        Repo repoOf(Run<?, ?> build);
+    }
+
+    /** @see SCMVar */
+    @OptionalExtension(requirePlugins = "workflow-multibranch")
+    public static final class SCMVarContextualizer implements Contextualizer {
+        @Override
+        public Repo repoOf(Run<?, ?> build) {
+            var job = build.getParent();
+            var property = job.getProperty(BranchJobProperty.class);
+            if (property != null) {
+                var branch = property.getBranch();
+                if (job.getParent() instanceof WorkflowMultiBranchProject workflowMultiBranchProject
+                        && workflowMultiBranchProject.getSCMSource(branch.getSourceId())
+                                instanceof OriginSCMSource src) {
+                    return new Repo(src.getRepoOwner(), src.getRepository());
+                }
+            } else if (job instanceof WorkflowJob workflowJob
+                    && workflowJob.getDefinition() instanceof CpsScmFlowDefinition cpsScmFlowDefinition
+                    && cpsScmFlowDefinition.getScm() instanceof GitSCM scm) {
+                var urls = scm.getUserRemoteConfigs().stream()
+                        .map(UserRemoteConfig::getUrl)
+                        .toList();
+                LOGGER.fine(() -> "inspecting " + urls);
+                if (urls.size() == 1) {
+                    var matcher = Pattern.compile(
+                                    "\\Q" + OriginSCMSource.GIT_BASE_URL + "\\E/([^/]+)/([^/]+?)(?:[.]git)?")
+                            .matcher(urls.get(0));
+                    if (matcher.matches()) {
+                        return new Repo(matcher.group(1), matcher.group(2));
+                    }
+                }
+            }
+            return null;
+        }
     }
 
     /** Mints a fresh installation access token by exchanging a JWT on the controller. */
     String mintToken() {
         // TODO: introduce token caching (see GitHubAppCredentials) if needed
         JenkinsJVM.checkJenkinsJVM();
-        return doMintToken(appId, installationId, privateKey.getPlainText());
+        return doMintToken(appId, installationId, privateKey.getPlainText(), null, "controller");
     }
 
     static OriginServiceApi apiWithToken(String bearerToken) {
@@ -101,7 +190,12 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
         return new OriginServiceApi(client);
     }
 
-    static String doMintToken(String appId, String installationId, String plainPrivateKey) {
+    static String doMintToken(
+            String appId,
+            String installationId,
+            String plainPrivateKey,
+            @CheckForNull Repo repo,
+            String callerContext) {
         try {
             PrivateKey key = parseEd25519Key(plainPrivateKey);
             Instant now = Instant.now();
@@ -116,13 +210,24 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
                     .expiration(Date.from(now.plusSeconds(300)))
                     .signWith(key, Jwts.SIG.EdDSA)
                     .compact();
-            // TODO: pass repositoryIds for per-repo scoping
-            //   (see OriginServiceCreateInstallationAccessTokenRequest.repositoryIds)
-            InstallationAccessToken token = apiWithToken(jwt)
-                    .originServiceCreateInstallationAccessToken(
-                            installationId, new OriginServiceCreateInstallationAccessTokenRequest());
+            var req = new OriginServiceCreateInstallationAccessTokenRequest();
+            if (repo != null) {
+                var id = apiWithToken(doMintToken(appId, installationId, plainPrivateKey, null, callerContext))
+                        .originServiceGetRepo(repo.repoOwner, repo.repository)
+                        .getId();
+                LOGGER.fine(() -> "looked up " + id + " for " + repo);
+                req.setRepositoryIds(List.of(id));
+                req.setScopes(List.of("repository:contents:read"));
+            }
+            LOGGER.fine(() -> "Minting installation access token for app=" + appId
+                    + " installation=" + installationId
+                    + " caller=" + callerContext
+                    + " scopes=" + req.getScopes()
+                    + " repos=" + req.getRepositoryIds());
+            var token = apiWithToken(jwt).originServiceCreateInstallationAccessToken(installationId, req);
             LOGGER.fine(() -> "Minted installation access token for app=" + appId
                     + " installation=" + installationId
+                    + " caller=" + callerContext
                     + " expiresAt=" + token.getExpiresAt());
             return token.getToken();
         } catch (ApiException e) {
@@ -142,16 +247,19 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
 
     private Object writeReplace() {
         if (Channel.current() != null) {
+            checkRestriction();
             return new DelegatingOriginAppCredentials(
                     getId(),
                     getDescription(),
-                    new EncryptedObject<>(new TokenMintingData(appId, installationId, privateKey.getPlainText())));
+                    new EncryptedObject<>(
+                            new TokenMintingData(appId, installationId, privateKey.getPlainText(), repo)));
         }
         return this;
     }
 
     @SuppressWarnings("lgtm[jenkins/plaintext-storage]")
-    private record TokenMintingData(String appId, String installationId, String privateKey) implements Serializable {}
+    private record TokenMintingData(String appId, String installationId, String privateKey, Repo repo)
+            implements Serializable {}
 
     private record DelegatingOriginAppCredentials(
             String id, String description, EncryptedObject<TokenMintingData> trustedData)
@@ -216,7 +324,9 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
             return doMintToken(
                     trustedData.o().appId(),
                     trustedData.o().installationId(),
-                    trustedData.o().privateKey());
+                    trustedData.o().privateKey(),
+                    trustedData.o().repo,
+                    "agent");
         }
     }
 
