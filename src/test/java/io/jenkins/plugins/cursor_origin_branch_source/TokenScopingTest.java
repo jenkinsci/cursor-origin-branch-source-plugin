@@ -24,7 +24,10 @@ import hudson.util.Secret;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
+import jenkins.branch.BranchProperty;
 import jenkins.branch.BranchSource;
+import jenkins.branch.DefaultBranchPropertyStrategy;
+import jenkins.branch.NoTriggerBranchProperty;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
@@ -46,6 +49,8 @@ import org.jvnet.hudson.test.LogRecorder;
  *   <li>1. REST-only indexing: no git operations → token is unrestricted
  *   <li>2.i MBP {@code checkout scm}: token must be scoped to the specific repo
  *   <li>2.ii Standalone project with {@code CpsScmFlowDefinition}: same scoping required
+ *   <li>2.iii {@code git url:…} targeting another repo: currently succeeds (cross-repo scope)
+ *       — three variants: MBP, {@link CpsScmFlowDefinition}, and {@link CpsFlowDefinition}
  *   <li>3. {@code @Library} controller clone: token need not be scoped
  *   <li>4.a {@code withGit} unrestricted credential: git clone via credential helper binding
  *   <li>4.b {@code withCredentials} unrestricted credential: git clone via URL-embedded credentials
@@ -160,6 +165,147 @@ class TokenScopingTest extends MockOriginServerTestBase {
         MockGitServer.LastAuth auth = mockGitServer.getLastAuth(OWNER, "standalone-repo");
         assertThat("git server was contacted", auth != null);
         assertThat(auth.repositoryIds(), contains(mockRepo.id));
+        assertThat(auth.scopes(), containsInAnyOrder("repository:metadata:read", "repository:contents:read"));
+    }
+
+    // ── 2.iii: cross-repo git step ──────────────────────────────────────────
+
+    /**
+     * Scenario 2.iii (MBP): a multibranch pipeline Jenkinsfile uses {@code git url:…} targeting a
+     * <em>different</em> repo than the source repo, using the same restricted Origin credential.
+     *
+     * <p>Currently this <strong>succeeds</strong>: {@link OriginAppCredentials.GitSCMContextualizer}
+     * extracts the owner/repo from the URL and mints a token scoped to that other repo, which the
+     * git server accepts. Ideally this should fail — a build should not be able to clone an
+     * unrelated repo via the installation credential.
+     *
+     * @see <a href="https://github.com/jenkinsci/git-plugin/pull/4001#issuecomment-5636254808">git-plugin #4001</a>
+     */
+    @Test
+    void multiBranchGitStepToOtherRepoCurrentlySucceeds() throws Exception {
+        MockOriginServer.MockRepo otherRepo = mockServer.addRepo(OWNER, "other-repo", "main");
+        mockGitServer.addRepo(OWNER, "other-repo", otherRepo.id, "main", Map.of("file.txt", "world"));
+
+        // checkout-repo: MBP source — REST only (checkout scm is never called)
+        MockOriginServer.MockRepo checkoutRepo = mockServer.addRepo(OWNER, "checkout-repo", "main");
+        checkoutRepo.branch("main", "aaaa1111").file("Jenkinsfile", """
+                properties([parameters([string(name: 'REPO_URL')])])
+                node('remote') {
+                  git url: params.REPO_URL, branch: 'main', credentialsId: 'origin-test-creds'
+                }
+                """);
+
+        WorkflowMultiBranchProject mbp = r.jenkins.createProject(WorkflowMultiBranchProject.class, "p");
+        OriginSCMSource source = new OriginSCMSource(OWNER, "checkout-repo");
+        source.setCredentialsId(CREDS_ID);
+        source.setTraits(List.of(new BranchDiscoveryTrait()));
+        BranchSource branchSource = new BranchSource(source);
+        branchSource.setStrategy(
+                new DefaultBranchPropertyStrategy(new BranchProperty[] {new NoTriggerBranchProperty()}));
+        mbp.getSourcesList().add(branchSource);
+        mbp.scheduleBuild2(0).getFuture().get(); // index only; NoTriggerBranchProperty suppresses auto-build
+
+        WorkflowJob job = mbp.getItem("main");
+        assertThat("branch job was created", job != null);
+        String otherRepoUrl = OriginSCMSource.GIT_BASE_URL + "/" + OWNER + "/other-repo.git";
+        r.assertBuildStatus(
+                Result.SUCCESS,
+                job.scheduleBuild2(0, new ParametersAction(new StringParameterValue("REPO_URL", otherRepoUrl)))
+                        .get());
+
+        // Currently succeeds: GitSCMContextualizer mints a token scoped to other-repo from the URL.
+        // TODO: should fail once cross-repo credential use is disallowed (see git-plugin #4001)
+        MockGitServer.LastAuth auth = mockGitServer.getLastAuth(OWNER, "other-repo");
+        assertThat("other-repo git server was contacted", auth != null);
+        assertThat(auth.repositoryIds(), contains(otherRepo.id));
+        assertThat(auth.scopes(), containsInAnyOrder("repository:metadata:read", "repository:contents:read"));
+    }
+
+    /**
+     * Scenario 2.iii ({@link CpsScmFlowDefinition}): a standalone pipeline fetches its Jenkinsfile
+     * from {@code source-repo} via {@link GitSCM} but then uses {@code git url:…} with the same
+     * restricted Origin credential to clone a different repo ({@code other-repo}).
+     *
+     * <p>Currently this <strong>succeeds</strong> for the same reason as the MBP variant above.
+     *
+     * @see <a href="https://github.com/jenkinsci/git-plugin/pull/4001#issuecomment-5636254808">git-plugin #4001</a>
+     */
+    @Test
+    void standaloneScmGitStepToOtherRepoCurrentlySucceeds() throws Exception {
+        MockOriginServer.MockRepo sourceRepo = mockServer.addRepo(OWNER, "source-repo", "main");
+        String sourceSha =
+                mockGitServer.addRepo(OWNER, "source-repo", sourceRepo.id, "main", Map.of("Jenkinsfile", """
+                        properties([parameters([string(name: 'REPO_URL')])])
+                        node('remote') {
+                          git url: params.REPO_URL, branch: 'main', credentialsId: 'origin-test-creds'
+                        }
+                        """));
+        sourceRepo.branch("main", sourceSha);
+
+        MockOriginServer.MockRepo otherRepo = mockServer.addRepo(OWNER, "other-repo", "main");
+        mockGitServer.addRepo(OWNER, "other-repo", otherRepo.id, "main", Map.of("file.txt", "world"));
+
+        WorkflowJob job = r.createProject(WorkflowJob.class, "p");
+        job.addProperty(new ParametersDefinitionProperty(List.of(new StringParameterDefinition("REPO_URL", ""))));
+        String sourceRepoUrl = OriginSCMSource.GIT_BASE_URL + "/" + OWNER + "/source-repo.git";
+        GitSCM scm = new GitSCM(
+                List.of(new UserRemoteConfig(sourceRepoUrl, "origin", null, CREDS_ID)),
+                List.of(new BranchSpec("*/main")),
+                null,
+                null,
+                List.of());
+        CpsScmFlowDefinition def = new CpsScmFlowDefinition(scm, "Jenkinsfile");
+        // TODO: lightweight mode requires OriginSCMFileSystem.BuilderImpl.supports(GitSCM) recognition
+        def.setLightweight(false);
+        job.setDefinition(def);
+
+        String otherRepoUrl = OriginSCMSource.GIT_BASE_URL + "/" + OWNER + "/other-repo.git";
+        r.assertBuildStatus(
+                Result.SUCCESS,
+                job.scheduleBuild2(0, new ParametersAction(new StringParameterValue("REPO_URL", otherRepoUrl)))
+                        .get());
+
+        // Currently succeeds: GitSCMContextualizer mints a token scoped to other-repo from the URL.
+        // TODO: should fail once cross-repo credential use is disallowed (see git-plugin #4001)
+        MockGitServer.LastAuth auth = mockGitServer.getLastAuth(OWNER, "other-repo");
+        assertThat("other-repo git server was contacted", auth != null);
+        assertThat(auth.repositoryIds(), contains(otherRepo.id));
+        assertThat(auth.scopes(), containsInAnyOrder("repository:metadata:read", "repository:contents:read"));
+    }
+
+    /**
+     * Scenario 2.iii ({@link CpsFlowDefinition}): a standalone pipeline with no associated repo
+     * uses {@code git url:…} with the same restricted Origin credential to clone {@code other-repo}.
+     *
+     * <p>Currently this <strong>succeeds</strong> for the same reason as the MBP variant above.
+     *
+     * @see <a href="https://github.com/jenkinsci/git-plugin/pull/4001#issuecomment-5636254808">git-plugin #4001</a>
+     */
+    @Test
+    void gitStepToOtherRepoCurrentlySucceeds() throws Exception {
+        MockOriginServer.MockRepo otherRepo = mockServer.addRepo(OWNER, "other-repo", "main");
+        mockGitServer.addRepo(OWNER, "other-repo", otherRepo.id, "main", Map.of("file.txt", "world"));
+
+        WorkflowJob job = r.createProject(WorkflowJob.class, "p");
+        job.addProperty(new ParametersDefinitionProperty(List.of(new StringParameterDefinition("REPO_URL", ""))));
+        job.setDefinition(new CpsFlowDefinition("""
+                properties([parameters([string(name: 'REPO_URL')])])
+                node('remote') {
+                  git url: params.REPO_URL, branch: 'main', credentialsId: 'origin-test-creds'
+                }
+                """, true));
+
+        String otherRepoUrl = OriginSCMSource.GIT_BASE_URL + "/" + OWNER + "/other-repo.git";
+        r.assertBuildStatus(
+                Result.SUCCESS,
+                job.scheduleBuild2(0, new ParametersAction(new StringParameterValue("REPO_URL", otherRepoUrl)))
+                        .get());
+
+        // Currently succeeds: GitSCMContextualizer mints a token scoped to other-repo from the URL.
+        // TODO: should fail once cross-repo credential use is disallowed (see git-plugin #4001)
+        MockGitServer.LastAuth auth = mockGitServer.getLastAuth(OWNER, "other-repo");
+        assertThat("other-repo git server was contacted", auth != null);
+        assertThat(auth.repositoryIds(), contains(otherRepo.id));
         assertThat(auth.scopes(), containsInAnyOrder("repository:metadata:read", "repository:contents:read"));
     }
 
