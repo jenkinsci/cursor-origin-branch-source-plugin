@@ -86,6 +86,10 @@ class TokenScopingTest extends MockOriginServerTestBase {
 
         // Git server should not have been contacted for indexing
         assertThat(mockGitServer.getLastAuth(OWNER, "api-only-repo"), is(nullValue()));
+
+        // Indexing schedules a build of the discovered branch; let it finish before the rule tears
+        // the temp directory down, or its still-open build files fail the cleanup.
+        r.waitUntilNoActivity();
     }
 
     // ── 2.i: MBP checkout scm ───────────────────────────────────────────────
