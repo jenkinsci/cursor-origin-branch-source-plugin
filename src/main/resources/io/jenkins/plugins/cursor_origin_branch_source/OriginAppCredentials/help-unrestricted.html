@@ -2,6 +2,7 @@
     When checked, this credential may be used freely in Pipeline steps such as <code>withCredentials</code> and <code>withGit</code>.
     An unrestricted access token will be sent to the agent and available for use from user-defined scripts.
     These might be used to make REST API calls, push tags to the Git server, and so on.
+    It may also be used in <code>git</code> steps, or <code>checkout</code> with an arbitrary argument, to clone repositories.
 </p>
 <p>
     Be very careful about using this option.

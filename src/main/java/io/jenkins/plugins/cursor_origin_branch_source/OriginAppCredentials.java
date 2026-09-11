@@ -10,7 +10,11 @@ import com.cloudbees.plugins.credentials.impl.BaseStandardCredentials;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import hudson.Extension;
+import hudson.ExtensionList;
+import hudson.ExtensionPoint;
+import hudson.model.Run;
 import hudson.plugins.git.GitSCM;
+import hudson.plugins.git.UserRemoteConfig;
 import hudson.remoting.Channel;
 import hudson.util.Secret;
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.ApiClient;
@@ -31,6 +35,11 @@ import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import jenkins.security.SlaveToMasterCallable;
 import jenkins.util.JenkinsJVM;
+import org.jenkinsci.plugins.variant.OptionalExtension;
+import org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition;
+import org.jenkinsci.plugins.workflow.job.WorkflowJob;
+import org.jenkinsci.plugins.workflow.multibranch.BranchJobProperty;
+import org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 
@@ -53,6 +62,8 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
 
     @CheckForNull
     Repo repo;
+
+    boolean repoTrusted;
 
     @DataBoundConstructor
     public OriginAppCredentials(
@@ -98,21 +109,29 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
     @NonNull
     @Override
     public Secret getPassword() {
-        checkRestriction();
+        checkRestriction(false);
         return Secret.fromString(mintToken());
     }
 
-    private void checkRestriction() throws SecurityException {
-        if (!unrestricted && repo == null) {
+    private void checkRestriction(boolean agent) throws SecurityException {
+        if (unrestricted) {
+            return;
+        }
+        if (repo == null) {
             throw new SecurityException("Cannot use restricted credentials " + CredentialsNameProvider.name(this)
                     + " without known repository");
+        }
+        if (agent && !repoTrusted) {
+            throw new SecurityException("Cannot use restricted credentials " + CredentialsNameProvider.name(this)
+                    + " on arbitrary repository " + repo.repoOwner + "/" + repo.repository);
         }
     }
 
     @Extension
     public static final class GitSCMContextualizer implements GitSCM.Contextualizer {
         @Override
-        public StandardUsernameCredentials forUrl(StandardUsernameCredentials credentials, String url) {
+        public StandardUsernameCredentials forContext(
+                StandardUsernameCredentials credentials, Run<?, ?> build, String url) {
             if (credentials instanceof OriginAppCredentials c) {
                 if (c.unrestricted) {
                     return null;
@@ -126,7 +145,58 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
                     var clone = new OriginAppCredentials(
                             c.getScope(), c.getId(), c.getDescription(), c.appId, c.installationId, c.privateKey);
                     clone.repo = r;
+                    for (var czr : ExtensionList.lookup(TrustedRepoLocator.class)) {
+                        var trusted = czr.repoOf(build);
+                        if (trusted != null) {
+                            if (trusted.equals(r)) {
+                                LOGGER.fine(() -> "trusting " + r);
+                                clone.repoTrusted = true;
+                                break;
+                            } else {
+                                LOGGER.fine(() -> "not trusting " + r + " since it differs from " + trusted);
+                            }
+                        }
+                    }
                     return clone;
+                }
+            }
+            return null;
+        }
+    }
+
+    public interface TrustedRepoLocator extends ExtensionPoint {
+        @CheckForNull
+        Repo repoOf(Run<?, ?> build);
+    }
+
+    /** @see SCMVar */
+    @OptionalExtension(requirePlugins = "workflow-multibranch")
+    public static final class SCMVarTrustedRepoLocator implements TrustedRepoLocator {
+        @Override
+        public Repo repoOf(Run<?, ?> build) {
+            var job = build.getParent();
+            var property = job.getProperty(BranchJobProperty.class);
+            if (property != null) {
+                var branch = property.getBranch();
+                if (job.getParent() instanceof WorkflowMultiBranchProject workflowMultiBranchProject
+                        && workflowMultiBranchProject.getSCMSource(branch.getSourceId())
+                                instanceof OriginSCMSource src) {
+                    return new Repo(src.getRepoOwner(), src.getRepository());
+                }
+            } else if (job instanceof WorkflowJob workflowJob
+                    && workflowJob.getDefinition() instanceof CpsScmFlowDefinition cpsScmFlowDefinition
+                    && cpsScmFlowDefinition.getScm() instanceof GitSCM scm) {
+                var urls = scm.getUserRemoteConfigs().stream()
+                        .map(UserRemoteConfig::getUrl)
+                        .toList();
+                LOGGER.fine(() -> "inspecting " + urls);
+                if (urls.size() == 1) {
+                    var matcher = Pattern.compile(
+                                    "\\Q" + OriginSCMSource.GIT_BASE_URL + "\\E/([^/]+)/([^/]+?)(?:[.]git)?")
+                            .matcher(urls.get(0));
+                    if (matcher.matches()) {
+                        return new Repo(matcher.group(1), matcher.group(2));
+                    }
                 }
             }
             return null;
@@ -204,7 +274,7 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
 
     private Object writeReplace() {
         if (Channel.current() != null) {
-            checkRestriction();
+            checkRestriction(true);
             return new DelegatingOriginAppCredentials(
                     getId(),
                     getDescription(),
