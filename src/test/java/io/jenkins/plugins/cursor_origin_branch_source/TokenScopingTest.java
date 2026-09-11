@@ -24,7 +24,10 @@ import hudson.util.Secret;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
+import jenkins.branch.BranchProperty;
 import jenkins.branch.BranchSource;
+import jenkins.branch.DefaultBranchPropertyStrategy;
+import jenkins.branch.NoTriggerBranchProperty;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
@@ -35,24 +38,11 @@ import org.jenkinsci.plugins.workflow.libs.SCMSourceRetriever;
 import org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject;
 import org.junit.jupiter.api.AutoClose;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.jvnet.hudson.test.LogRecorder;
 
 /**
  * Tests for token scoping behavior (issue #16: properly scope access tokens to relevant repo).
- *
- * <p>Scenarios covered:
- * <ul>
- *   <li>1. REST-only indexing: no git operations → token is unrestricted
- *   <li>2.i MBP {@code checkout scm}: token must be scoped to the specific repo
- *   <li>2.ii Standalone project with {@code CpsScmFlowDefinition}: same scoping required
- *   <li>3. {@code @Library} controller clone: token need not be scoped
- *   <li>4.a {@code withGit} unrestricted credential: git clone via credential helper binding
- *   <li>4.b {@code withCredentials} unrestricted credential: git clone via URL-embedded credentials
- *   <li>4.c {@code withCredentials} unrestricted credential: REST API call with Bearer token
- *   <li>4 (restricted): {@code withCredentials} with restricted credential must fail immediately
- * </ul>
  */
 class TokenScopingTest extends MockOriginServerTestBase {
 
@@ -164,6 +154,112 @@ class TokenScopingTest extends MockOriginServerTestBase {
         assertThat(auth.scopes(), containsInAnyOrder("repository:metadata:read", "repository:contents:read"));
     }
 
+    // ── 2.iii: cross-repo git step ──────────────────────────────────────────
+
+    /**
+     * Scenario 2.iii (MBP): a multibranch pipeline Jenkinsfile uses {@code git url:…} targeting a
+     * <em>different</em> repo than the source repo, using the same restricted Origin credential.
+     */
+    @Test
+    void multiBranchGitStepToOtherRepoRejected() throws Exception {
+        MockOriginServer.MockRepo otherRepo = mockServer.addRepo(OWNER, "other-repo", "main");
+        mockGitServer.addRepo(OWNER, "other-repo", otherRepo.id, "main", Map.of("file.txt", "world"));
+
+        // checkout-repo: MBP source — REST only (checkout scm is never called)
+        MockOriginServer.MockRepo checkoutRepo = mockServer.addRepo(OWNER, "checkout-repo", "main");
+        checkoutRepo.branch("main", "aaaa1111").file("Jenkinsfile", """
+                properties([parameters([string(name: 'REPO_URL')])])
+                node('remote') {
+                  git url: params.REPO_URL, branch: 'main', credentialsId: 'origin-test-creds'
+                }
+                """);
+
+        WorkflowMultiBranchProject mbp = r.jenkins.createProject(WorkflowMultiBranchProject.class, "p");
+        OriginSCMSource source = new OriginSCMSource(OWNER, "checkout-repo");
+        source.setCredentialsId(CREDS_ID);
+        source.setTraits(List.of(new BranchDiscoveryTrait()));
+        BranchSource branchSource = new BranchSource(source);
+        branchSource.setStrategy(
+                new DefaultBranchPropertyStrategy(new BranchProperty[] {new NoTriggerBranchProperty()}));
+        mbp.getSourcesList().add(branchSource);
+        mbp.scheduleBuild2(0).getFuture().get(); // index only; NoTriggerBranchProperty suppresses auto-build
+
+        WorkflowJob job = mbp.getItem("main");
+        assertThat("branch job was created", job != null);
+        String otherRepoUrl = OriginSCMSource.GIT_BASE_URL + "/" + OWNER + "/other-repo.git";
+        var build = r.assertBuildStatus(
+                Result.FAILURE,
+                job.scheduleBuild2(0, new ParametersAction(new StringParameterValue("REPO_URL", otherRepoUrl)))
+                        .get());
+        r.assertLogContains("on arbitrary repository", build);
+    }
+
+    /**
+     * Scenario 2.iii ({@link CpsScmFlowDefinition}): a standalone pipeline fetches its Jenkinsfile
+     * from {@code source-repo} via {@link GitSCM} but then uses {@code git url:…} with the same
+     * restricted Origin credential to clone a different repo ({@code other-repo}).
+     */
+    @Test
+    void standaloneScmGitStepToOtherRepoRejected() throws Exception {
+        MockOriginServer.MockRepo sourceRepo = mockServer.addRepo(OWNER, "source-repo", "main");
+        String sourceSha =
+                mockGitServer.addRepo(OWNER, "source-repo", sourceRepo.id, "main", Map.of("Jenkinsfile", """
+                        node('remote') {
+                          git url: params.REPO_URL, branch: 'main', credentialsId: 'origin-test-creds'
+                        }
+                        """));
+        sourceRepo.branch("main", sourceSha);
+
+        MockOriginServer.MockRepo otherRepo = mockServer.addRepo(OWNER, "other-repo", "main");
+        mockGitServer.addRepo(OWNER, "other-repo", otherRepo.id, "main", Map.of("file.txt", "world"));
+
+        WorkflowJob job = r.createProject(WorkflowJob.class, "p");
+        job.addProperty(new ParametersDefinitionProperty(List.of(new StringParameterDefinition("REPO_URL", ""))));
+        String sourceRepoUrl = OriginSCMSource.GIT_BASE_URL + "/" + OWNER + "/source-repo.git";
+        GitSCM scm = new GitSCM(
+                List.of(new UserRemoteConfig(sourceRepoUrl, "origin", null, CREDS_ID)),
+                List.of(new BranchSpec("*/main")),
+                null,
+                null,
+                List.of());
+        CpsScmFlowDefinition def = new CpsScmFlowDefinition(scm, "Jenkinsfile");
+        // TODO: lightweight mode requires OriginSCMFileSystem.BuilderImpl.supports(GitSCM) recognition
+        def.setLightweight(false);
+        job.setDefinition(def);
+
+        String otherRepoUrl = OriginSCMSource.GIT_BASE_URL + "/" + OWNER + "/other-repo.git";
+        var build = r.assertBuildStatus(
+                Result.FAILURE,
+                job.scheduleBuild2(0, new ParametersAction(new StringParameterValue("REPO_URL", otherRepoUrl)))
+                        .get());
+        r.assertLogContains("on arbitrary repository", build);
+    }
+
+    /**
+     * Scenario 2.iii ({@link CpsFlowDefinition}): a standalone pipeline with no associated repo
+     * uses {@code git url:…} with the same restricted Origin credential to clone {@code other-repo}.
+     */
+    @Test
+    void gitStepToOtherRepoRejected() throws Exception {
+        MockOriginServer.MockRepo otherRepo = mockServer.addRepo(OWNER, "other-repo", "main");
+        mockGitServer.addRepo(OWNER, "other-repo", otherRepo.id, "main", Map.of("file.txt", "world"));
+
+        WorkflowJob job = r.createProject(WorkflowJob.class, "p");
+        job.addProperty(new ParametersDefinitionProperty(List.of(new StringParameterDefinition("REPO_URL", ""))));
+        job.setDefinition(new CpsFlowDefinition("""
+                node('remote') {
+                  git url: params.REPO_URL, branch: 'main', credentialsId: 'origin-test-creds'
+                }
+                """, true));
+
+        String otherRepoUrl = OriginSCMSource.GIT_BASE_URL + "/" + OWNER + "/other-repo.git";
+        var build = r.assertBuildStatus(
+                Result.FAILURE,
+                job.scheduleBuild2(0, new ParametersAction(new StringParameterValue("REPO_URL", otherRepoUrl)))
+                        .get());
+        r.assertLogContains("on arbitrary repository", build);
+    }
+
     // ── 3: @Library controller clone ────────────────────────────────────────
 
     /**
@@ -172,7 +268,6 @@ class TokenScopingTest extends MockOriginServerTestBase {
      * clone need not be scoped to any specific repo — controller-side library retrieval is
      * intentionally unrestricted.
      */
-    @Disabled("TODO unclear how to differentiate library clone on controller from withCredentials without new API")
     @Test
     void libraryCloneOnControllerUsesUnrestrictedToken() throws Exception {
         MockOriginServer.MockRepo libRepo = mockServer.addRepo(OWNER, "lib-repo", "main");
@@ -315,7 +410,7 @@ class TokenScopingTest extends MockOriginServerTestBase {
                                 new ParametersAction(new StringParameterValue(
                                         "REST_URL", mockServer.baseUrl() + "/v1/origin/installation/repos")))
                         .get());
-        r.assertLogContains("Cannot use restricted credentials", build);
+        r.assertLogContains("without known repository", build);
     }
 
     // ── 4 (restricted): gitUsernamePassword restricted credential ───────────
@@ -344,7 +439,7 @@ class TokenScopingTest extends MockOriginServerTestBase {
                                 new ParametersAction(new StringParameterValue(
                                         "REPO_URL", mockGitServer.baseUrl() + "/" + OWNER + "/git-repo.git")))
                         .get());
-        r.assertLogContains("Cannot use restricted credentials", build);
+        r.assertLogContains("without known repository", build);
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

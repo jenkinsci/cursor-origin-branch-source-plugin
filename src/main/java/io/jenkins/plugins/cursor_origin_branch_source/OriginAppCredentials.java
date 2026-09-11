@@ -4,6 +4,7 @@ import com.cloudbees.plugins.credentials.CredentialsDescriptor;
 import com.cloudbees.plugins.credentials.CredentialsNameProvider;
 import com.cloudbees.plugins.credentials.CredentialsScope;
 import com.cloudbees.plugins.credentials.CredentialsSnapshotTaker;
+import com.cloudbees.plugins.credentials.common.StandardUsernameCredentials;
 import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
 import com.cloudbees.plugins.credentials.impl.BaseStandardCredentials;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
@@ -58,10 +59,12 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
     private final Secret privateKey;
     private boolean unrestricted;
 
-    public record Repo(String repoOwner, String repository) implements Serializable {}
+    record Repo(String repoOwner, String repository) implements Serializable {}
 
     @CheckForNull
     Repo repo;
+
+    boolean repoTrusted;
 
     @DataBoundConstructor
     public OriginAppCredentials(
@@ -107,44 +110,69 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
     @NonNull
     @Override
     public Secret getPassword() {
-        checkRestriction();
+        checkRestriction(false);
         return Secret.fromString(mintToken());
     }
 
-    private void checkRestriction() throws SecurityException {
-        if (!unrestricted && repo == null) {
+    private void checkRestriction(boolean agent) throws SecurityException {
+        if (unrestricted) {
+            return;
+        }
+        if (repo == null) {
             throw new SecurityException("Cannot use restricted credentials " + CredentialsNameProvider.name(this)
                     + " without known repository");
         }
+        if (agent && !repoTrusted) {
+            throw new SecurityException("Cannot use restricted credentials " + CredentialsNameProvider.name(this)
+                    + " on arbitrary repository " + repo.repoOwner + "/" + repo.repository);
+        }
     }
 
-    @Override
-    public OriginAppCredentials forRun(Run<?, ?> build) {
-        if (unrestricted) {
-            return this;
-        }
-        for (var contextualizer : ExtensionList.lookup(Contextualizer.class)) {
-            var r = contextualizer.repoOf(build);
-            if (r != null) {
-                LOGGER.fine(() -> "found " + r + " in " + build);
-                var clone = new OriginAppCredentials(
-                        getScope(), getId(), getDescription(), appId, installationId, privateKey);
-                clone.repo = r;
-                return clone;
+    @Extension
+    public static final class GitSCMContextualizer implements GitSCM.Contextualizer {
+        @Override
+        public StandardUsernameCredentials forContext(
+                StandardUsernameCredentials credentials, Run<?, ?> build, String url) {
+            if (credentials instanceof OriginAppCredentials c) {
+                if (c.unrestricted) {
+                    return null;
+                }
+                LOGGER.fine(() -> "inspecting " + url);
+                var matcher = Pattern.compile("\\Q" + OriginSCMSource.GIT_BASE_URL + "\\E/([^/]+)/([^/]+?)(?:[.]git)?")
+                        .matcher(url);
+                if (matcher.matches()) {
+                    var r = new Repo(matcher.group(1), matcher.group(2));
+                    LOGGER.fine(() -> "found " + r);
+                    var clone = new OriginAppCredentials(
+                            c.getScope(), c.getId(), c.getDescription(), c.appId, c.installationId, c.privateKey);
+                    clone.repo = r;
+                    for (var czr : ExtensionList.lookup(TrustedRepoLocator.class)) {
+                        var trusted = czr.repoOf(build);
+                        if (trusted != null) {
+                            if (trusted.equals(r)) {
+                                LOGGER.fine(() -> "trusting " + r);
+                                clone.repoTrusted = true;
+                                break;
+                            } else {
+                                LOGGER.fine(() -> "not trusting " + r + " since it differs from " + trusted);
+                            }
+                        }
+                    }
+                    return clone;
+                }
             }
+            return null;
         }
-        LOGGER.fine(() -> "found nothing for " + build);
-        return this;
     }
 
-    public interface Contextualizer extends ExtensionPoint {
+    public interface TrustedRepoLocator extends ExtensionPoint {
         @CheckForNull
         Repo repoOf(Run<?, ?> build);
     }
 
     /** @see SCMVar */
     @OptionalExtension(requirePlugins = "workflow-multibranch")
-    public static final class SCMVarContextualizer implements Contextualizer {
+    public static final class SCMVarTrustedRepoLocator implements TrustedRepoLocator {
         @Override
         public Repo repoOf(Run<?, ?> build) {
             var job = build.getParent();
@@ -247,7 +275,7 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
 
     private Object writeReplace() {
         if (Channel.current() != null) {
-            checkRestriction();
+            checkRestriction(true);
             return new DelegatingOriginAppCredentials(
                     getId(),
                     getDescription(),

@@ -53,6 +53,11 @@
         <type>pom</type>
         <scope>import</scope>
       </dependency>
+      <dependency>
+        <groupId>org.jenkins-ci.plugins</groupId>
+        <artifactId>git</artifactId>
+        <version>5.10.2-rc5584.7c97d003c560</version>
+      </dependency>
     </dependencies>
   </dependencyManagement>
 
@@ -97,6 +102,11 @@
       <groupId>org.awaitility</groupId>
       <artifactId>awaitility</artifactId>
       <version>4.3.0</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jenkins-ci.plugins</groupId>
+      <artifactId>credentials-binding</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>

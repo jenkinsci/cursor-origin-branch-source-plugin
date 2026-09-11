@@ -100,6 +100,7 @@ class OriginAppCredentialsLiveTest {
                 Secret.fromString(Files.readString(Path.of(pkFile))));
         // TODO convert this to run a real build with checkout scm, like standaloneProjectCheckoutScopedToRepo
         creds.repo = new OriginAppCredentials.Repo(ownerSlug, repoName);
+        creds.repoTrusted = true;
         var agent = r.createOnlineSlave();
         var listener = StreamTaskListener.fromStderr();
         var ws = agent.getWorkspaceRoot();
