@@ -228,12 +228,17 @@ records how many it has already sent on the run so that a repeated report of the
 duplicate them.
 
 Origin also caps the size of each field: 65535 UTF-8 bytes for `message` and `rawDetails`, 255
-Unicode characters for `title`. An oversized field is not a client error worth failing on — the
-annotation is still worth having — so `OriginChecksDetails` shortens it, appends
-`TRUNCATION_MARKER` so the reader can see something is missing, and reports one line per affected
-field to the build log. Truncation keeps whole code points, since a value cut mid-character is
-invalid UTF-8 and Origin rejects it. Nothing is silently altered: if the value fits, the log stays
-quiet.
+Unicode characters for `title`, and 4096 UTF-8 bytes for `location.path`. An oversized field is not a
+client error worth failing on — the annotation is still worth having — so `OriginChecksDetails`
+shortens it, appends `TRUNCATION_MARKER` so the reader can see something is missing, and reports one
+line per affected field to the build log. Truncation keeps whole code points, since a value cut
+mid-character is invalid UTF-8 and Origin rejects it. Nothing is silently altered: if the value fits,
+the log stays quiet.
+
+`location.path` is the exception, because it is not truncatable: a shortened path points at a file
+that does not exist, so the annotation would render nowhere useful even though Origin accepted it.
+An over-long path therefore costs the annotation its location, not its content — it is reported at
+run level, which is what already happens to an annotation with no path or no line range.
 
 This matters more than it looks. Annotations go in batches of 25, and Origin rejects the whole
 request if any one of them is oversized, so a single long warnings-ng message would otherwise take

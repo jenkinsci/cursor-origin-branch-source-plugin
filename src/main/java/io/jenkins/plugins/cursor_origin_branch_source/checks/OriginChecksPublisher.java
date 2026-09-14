@@ -76,7 +76,7 @@ class OriginChecksPublisher extends ChecksPublisher {
 
             publishAnnotations(api, response, originDetails);
             logUnsupportedParts(details);
-            originDetails.getTruncationWarnings().forEach(warning -> buildLogger.log("%s", warning));
+            originDetails.getSizeLimitWarnings().forEach(warning -> buildLogger.log("%s", warning));
 
             buildLogger.log(
                     "Cursor Origin check (name: %s, status: %s) has been published.",

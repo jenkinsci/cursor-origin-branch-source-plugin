@@ -44,6 +44,9 @@ class OriginChecksDetails {
     /** Maximum length of the output and annotation {@code title} fields. */
     static final int MAX_TITLE_LENGTH = 255;
 
+    /** Maximum UTF-8 size of an annotation's {@code location.path}. */
+    static final int MAX_PATH_SIZE_BYTES = 4_096;
+
     /** Appended to a value that had to be shortened, so the reader knows something is missing. */
     static final String TRUNCATION_MARKER = "…[truncated]";
 
@@ -57,6 +60,9 @@ class OriginChecksDetails {
     private final Map<String, Integer> truncatedAnnotationFields = new LinkedHashMap<>();
 
     private boolean outputTitleTruncated;
+
+    /** Annotations reported without a location because their path was too long to send. */
+    private int locationsDropped;
 
     /** Built once, so that the truncations it records are counted once. */
     @CheckForNull
@@ -172,13 +178,13 @@ class OriginChecksDetails {
     }
 
     /**
-     * Describes any values that had to be shortened to be publishable, one line per field, so that the
-     * caller can say so in the build log. Empty when everything fitted.
+     * Describes anything that had to be shortened or dropped to be publishable, one line per field, so
+     * that the caller can say so in the build log. Empty when everything fitted.
      *
      * <p>Only meaningful once {@link #getAnnotations()} has been called.
      */
     @NonNull
-    List<String> getTruncationWarnings() {
+    List<String> getSizeLimitWarnings() {
         getOutput();
         getAnnotations();
         List<String> warnings = new ArrayList<>();
@@ -189,6 +195,11 @@ class OriginChecksDetails {
         truncatedAnnotationFields.forEach((field, count) -> warnings.add(String.format(
                 "Truncated the %s of %d annotation(s) to Origin's limit; the full text remains in the Jenkins build.",
                 field, count)));
+        if (locationsDropped > 0) {
+            warnings.add(String.format(
+                    "Reported %d annotation(s) without a source location: the path exceeds Origin's limit of %d bytes.",
+                    locationsDropped, MAX_PATH_SIZE_BYTES));
+        }
         return List.copyOf(warnings);
     }
 
@@ -209,13 +220,20 @@ class OriginChecksDetails {
 
     /**
      * Builds the source location of an annotation. Origin requires a path and a coherent line range,
-     * so an annotation missing either is reported at the run level instead of inline.
+     * so an annotation missing either — or carrying a path too long to send — is reported at the run
+     * level instead of inline.
      */
-    private static Optional<CheckRunAnnotationLocation> toLocation(ChecksAnnotation annotation) {
+    private Optional<CheckRunAnnotationLocation> toLocation(ChecksAnnotation annotation) {
         Optional<String> path = annotation.getPath().filter(p -> !p.isBlank());
         Optional<Integer> startLine = annotation.getStartLine();
         Optional<Integer> endLine = annotation.getEndLine();
         if (path.isEmpty() || startLine.isEmpty() || endLine.isEmpty()) {
+            return Optional.empty();
+        }
+        // A path is not truncatable: a shortened one points at a file that does not exist, which is
+        // worse than no location at all, so the annotation is reported at run level instead.
+        if (path.get().getBytes(StandardCharsets.UTF_8).length > MAX_PATH_SIZE_BYTES) {
+            locationsDropped++;
             return Optional.empty();
         }
         CheckRunAnnotationLocation location = new CheckRunAnnotationLocation()

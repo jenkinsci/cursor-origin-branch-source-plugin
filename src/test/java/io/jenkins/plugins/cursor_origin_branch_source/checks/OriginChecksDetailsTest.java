@@ -196,7 +196,7 @@ class OriginChecksDetailsTest {
         String published = details.getOutput().orElseThrow().getTitle();
         assertThat(published.codePointCount(0, published.length()), is(OriginChecksDetails.MAX_TITLE_LENGTH));
         assertThat(published, endsWith(OriginChecksDetails.TRUNCATION_MARKER));
-        assertThat(details.getTruncationWarnings(), contains(containsString("check output title")));
+        assertThat(details.getSizeLimitWarnings(), contains(containsString("check output title")));
     }
 
     /**
@@ -232,7 +232,7 @@ class OriginChecksDetailsTest {
         assertThat(annotation.getLocation().getPath(), is("src/Main.java"));
 
         assertThat(
-                details.getTruncationWarnings(),
+                details.getSizeLimitWarnings(),
                 containsInAnyOrder(
                         containsString("message of 1 annotation(s)"),
                         containsString("rawDetails of 1 annotation(s)"),
@@ -260,6 +260,43 @@ class OriginChecksDetailsTest {
         assertThat(published, endsWith(OriginChecksDetails.TRUNCATION_MARKER));
     }
 
+    /**
+     * A path cannot be shortened without pointing at a file that does not exist, so an over-long one
+     * costs the annotation its inline location but not the annotation itself.
+     */
+    @Test
+    void anUnsendablePathCostsTheLocationRatherThanTheAnnotation() {
+        String path = "d/".repeat(OriginChecksDetails.MAX_PATH_SIZE_BYTES) + "Main.java";
+        OriginChecksDetails details = detailsWith(new ChecksAnnotation.ChecksAnnotationBuilder()
+                .withPath(path)
+                .withStartLine(7)
+                .withEndLine(7)
+                .withAnnotationLevel(ChecksAnnotation.ChecksAnnotationLevel.WARNING)
+                .withMessage("still worth reporting")
+                .build());
+
+        CheckRunAnnotationInput annotation = details.getAnnotations().get(0);
+        assertThat(annotation.getLocation(), is(nullValue()));
+        assertThat(annotation.getMessage(), is("still worth reporting"));
+        assertThat(
+                details.getSizeLimitWarnings(), contains(containsString("1 annotation(s) without a source location")));
+    }
+
+    /** A path that fits is kept, so the limit does not cost every annotation its location. */
+    @Test
+    void aPathWithinTheLimitKeepsItsLocation() {
+        OriginChecksDetails details = detailsWith(new ChecksAnnotation.ChecksAnnotationBuilder()
+                .withPath("src/main/java/Main.java")
+                .withStartLine(7)
+                .withEndLine(7)
+                .withAnnotationLevel(ChecksAnnotation.ChecksAnnotationLevel.WARNING)
+                .withMessage("message")
+                .build());
+
+        assertThat(details.getAnnotations().get(0).getLocation().getPath(), is("src/main/java/Main.java"));
+        assertThat(details.getSizeLimitWarnings(), is(empty()));
+    }
+
     @Test
     void nothingIsReportedWhenEverythingFits() {
         OriginChecksDetails details = detailsWith(new ChecksAnnotation.ChecksAnnotationBuilder()
@@ -272,7 +309,7 @@ class OriginChecksDetailsTest {
                 .build());
 
         assertThat(details.getAnnotations(), hasSize(1));
-        assertThat(details.getTruncationWarnings(), is(empty()));
+        assertThat(details.getSizeLimitWarnings(), is(empty()));
     }
 
     /** Counting per field must not double up if the annotations are read more than once. */
@@ -290,7 +327,7 @@ class OriginChecksDetailsTest {
         details.getAnnotations();
         details.getOutput();
 
-        assertThat(details.getTruncationWarnings(), contains(containsString("message of 1 annotation(s)")));
+        assertThat(details.getSizeLimitWarnings(), contains(containsString("message of 1 annotation(s)")));
     }
 
     private static OriginChecksDetails detailsWith(ChecksAnnotation annotation) {
