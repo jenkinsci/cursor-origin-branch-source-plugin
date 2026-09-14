@@ -118,13 +118,14 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
         if (unrestricted) {
             return;
         }
-        if (repo == null) {
+        var _repo = repo;
+        if (_repo == null) {
             throw new SecurityException("Cannot use restricted credentials " + CredentialsNameProvider.name(this)
                     + " without known repository");
         }
         if (agent && !repoTrusted) {
             throw new SecurityException("Cannot use restricted credentials " + CredentialsNameProvider.name(this)
-                    + " on arbitrary repository " + repo.repoOwner + "/" + repo.repository);
+                    + " on arbitrary repository " + _repo.repoOwner + "/" + _repo.repository);
         }
     }
 
