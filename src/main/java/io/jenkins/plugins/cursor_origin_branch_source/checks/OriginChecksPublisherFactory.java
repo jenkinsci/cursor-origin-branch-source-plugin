@@ -1,6 +1,5 @@
 package io.jenkins.plugins.cursor_origin_branch_source.checks;
 
-import edu.hm.hafner.util.FilteredLog;
 import hudson.Extension;
 import hudson.model.Job;
 import hudson.model.Run;
@@ -15,7 +14,9 @@ import org.jenkinsci.plugins.displayurlapi.DisplayURLProvider;
  * Provides a {@link ChecksPublisher} for jobs backed by a Cursor Origin SCM source.
  *
  * <p>The checks API asks every registered factory in turn and uses the first one that claims the job,
- * so declining a job that is not Origin backed is part of the contract rather than an error.
+ * so declining a job that is not Origin backed is part of the contract rather than an error, and stays
+ * silent; {@link OriginChecksContext#isValid(TaskListener)} reports every other reason to the build
+ * log, since those are misconfigurations the user wants to see.
  *
  * <p>Only the {@link Run} overload is implemented. The {@link Job} one, which the checks API uses to
  * report a build as queued before it starts, is deliberately left to return nothing: the commit a
@@ -40,16 +41,11 @@ public class OriginChecksPublisherFactory extends ChecksPublisherFactory {
     @Override
     protected Optional<ChecksPublisher> createPublisher(final Run<?, ?> run, final TaskListener listener) {
         OriginChecksContext context = OriginChecksContext.fromRun(run, urlProvider.getRunURL(run), scmFacade);
-        FilteredLog causeLogger = new FilteredLog("Causes for no suitable checks publisher found: ");
-        PluginLogger consoleLogger = new PluginLogger(listener.getLogger(), "Cursor Origin Checks");
-        if (context.isValid(causeLogger)) {
-            return Optional.of(new OriginChecksPublisher(context, consoleLogger));
+        if (!context.isValid(listener)) {
+            // isValid has already explained itself to the build log where an explanation was warranted.
+            return Optional.empty();
         }
-        // Declining a job that is not Origin backed is the contract, so there is nothing to explain; for
-        // a job that is, always say why its checks could not be published.
-        if (scmFacade.findOriginSCMSource(run.getParent()).isPresent()) {
-            consoleLogger.logEachLine(causeLogger.getErrorMessages());
-        }
-        return Optional.empty();
+        return Optional.of(
+                new OriginChecksPublisher(context, new PluginLogger(listener.getLogger(), "Cursor Origin Checks")));
     }
 }

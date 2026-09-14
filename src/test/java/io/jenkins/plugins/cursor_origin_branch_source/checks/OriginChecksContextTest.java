@@ -1,21 +1,24 @@
 package io.jenkins.plugins.cursor_origin_branch_source.checks;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.empty;
-import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.emptyString;
 import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import edu.hm.hafner.util.FilteredLog;
 import hudson.model.Job;
 import hudson.model.Run;
+import hudson.model.TaskListener;
+import hudson.util.StreamTaskListener;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginAppCredentials;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginPullRequestSCMHead;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginPullRequestSCMRevision;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginSCMSource;
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 import jenkins.plugins.git.AbstractGitSCMSource;
 import jenkins.scm.api.SCMHead;
@@ -32,6 +35,9 @@ class OriginChecksContextTest {
     private static final String PR_HEAD_SHA = "1111111111111111111111111111111111111111";
     private static final String PR_BASE_SHA = "2222222222222222222222222222222222222222";
     private static final String URL = "http://localhost:8080/job/widgets/job/main/3/";
+
+    /** used by {@link #listener()} and {@link #buildLog()} */
+    private ByteArrayOutputStream console;
 
     @Test
     void resolvesRepositoryCoordinatesFromTheSource() {
@@ -118,16 +124,19 @@ class OriginChecksContextTest {
         assertThat(context.getSuiteName(), is("widgets » main"));
     }
 
+    /**
+     * The checks API asks every factory about every build, so a build that has nothing to do with
+     * Cursor Origin must be declined without a word in its log.
+     */
     @Test
-    void isNotValidForAJobWithoutAnOriginSource() {
+    void isNotValidAndSaysNothingForAJobWithoutAnOriginSource() {
         Job job = mockJob();
         Run run = mockRun(job);
         OriginSCMFacade facade = mock(OriginSCMFacade.class);
         when(facade.findOriginSCMSource(job)).thenReturn(Optional.empty());
-        FilteredLog logger = new FilteredLog("errors:");
 
-        assertThat(OriginChecksContext.fromRun(run, URL, facade).isValid(logger), is(false));
-        assertThat(logger.getErrorMessages(), hasItem("Job does not use a Cursor Origin SCM source"));
+        assertThat(OriginChecksContext.fromRun(run, URL, facade).isValid(listener()), is(false));
+        assertThat(buildLog(), is(emptyString()));
     }
 
     @Test
@@ -136,10 +145,9 @@ class OriginChecksContextTest {
         Run run = mockRun(job);
         OriginSCMSource source = new OriginSCMSource(OWNER, REPOSITORY);
         OriginSCMFacade facade = mockFacadeWithSource(job, source);
-        FilteredLog logger = new FilteredLog("errors:");
 
-        assertThat(OriginChecksContext.fromRun(run, URL, facade).isValid(logger), is(false));
-        assertThat(logger.getErrorMessages(), hasItem("No credentials configured on the Cursor Origin SCM source"));
+        assertThat(OriginChecksContext.fromRun(run, URL, facade).isValid(listener()), is(false));
+        assertThat(buildLog(), containsString("No credentials configured on the Cursor Origin SCM source"));
     }
 
     @Test
@@ -147,11 +155,9 @@ class OriginChecksContextTest {
         Job job = mockJob();
         Run run = mockRun(job);
         OriginSCMFacade facade = mockFacadeWithSource(job, createSource());
-        FilteredLog logger = new FilteredLog("errors:");
 
-        assertThat(OriginChecksContext.fromRun(run, URL, facade).isValid(logger), is(false));
-        assertThat(
-                logger.getErrorMessages(), hasItem("No Cursor Origin app credentials found with id: 'origin-creds'"));
+        assertThat(OriginChecksContext.fromRun(run, URL, facade).isValid(listener()), is(false));
+        assertThat(buildLog(), containsString("No Cursor Origin app credentials found with id: 'origin-creds'"));
     }
 
     @Test
@@ -160,10 +166,9 @@ class OriginChecksContextTest {
         Run run = mockRun(job);
         OriginSCMFacade facade = mockFacadeWithSource(job, createSource());
         when(facade.findCredentials(job, CREDENTIALS_ID)).thenReturn(Optional.of(mock(OriginAppCredentials.class)));
-        FilteredLog logger = new FilteredLog("errors:");
 
-        assertThat(OriginChecksContext.fromRun(run, URL, facade).isValid(logger), is(false));
-        assertThat(logger.getErrorMessages(), hasItem("No HEAD SHA found for acme-corp/widgets"));
+        assertThat(OriginChecksContext.fromRun(run, URL, facade).isValid(listener()), is(false));
+        assertThat(buildLog(), containsString("No HEAD SHA found for acme-corp/widgets"));
     }
 
     @Test
@@ -177,10 +182,18 @@ class OriginChecksContextTest {
         when(facade.findRevision(source, run))
                 .thenReturn(Optional.of(new AbstractGitSCMSource.SCMRevisionImpl(head, BRANCH_SHA)));
         when(facade.findCredentials(job, CREDENTIALS_ID)).thenReturn(Optional.of(mock(OriginAppCredentials.class)));
-        FilteredLog logger = new FilteredLog("errors:");
 
-        assertThat(OriginChecksContext.fromRun(run, URL, facade).isValid(logger), is(true));
-        assertThat(logger.getErrorMessages(), is(empty()));
+        assertThat(OriginChecksContext.fromRun(run, URL, facade).isValid(listener()), is(true));
+        assertThat(buildLog(), is(emptyString()));
+    }
+
+    private TaskListener listener() {
+        console = new ByteArrayOutputStream();
+        return new StreamTaskListener(console, StandardCharsets.UTF_8);
+    }
+
+    private String buildLog() {
+        return console.toString(StandardCharsets.UTF_8);
     }
 
     private static OriginSCMSource createSource() {

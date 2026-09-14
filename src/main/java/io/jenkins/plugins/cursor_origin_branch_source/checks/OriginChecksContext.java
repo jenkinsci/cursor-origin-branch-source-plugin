@@ -1,13 +1,14 @@
 package io.jenkins.plugins.cursor_origin_branch_source.checks;
 
-import edu.hm.hafner.util.FilteredLog;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import hudson.model.Job;
 import hudson.model.Run;
+import hudson.model.TaskListener;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginAppCredentials;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginSCMSource;
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.api.OriginServiceApi;
+import io.jenkins.plugins.util.PluginLogger;
 import java.util.Optional;
 import jenkins.scm.api.SCMSourceOwner;
 
@@ -19,7 +20,7 @@ import jenkins.scm.api.SCMSourceOwner;
  * that build. There is deliberately no way to build a context from a {@link Job} alone: the head of a
  * branch is not settled until the build has checked it out, so a SHA resolved before then can be one
  * the build never builds, leaving a check reported against the wrong commit. Validate a context with
- * {@link #isValid(FilteredLog)} before calling any of the resolving getters.
+ * {@link #isValid(TaskListener)} before calling any of the resolving getters.
  */
 class OriginChecksContext {
 
@@ -46,26 +47,31 @@ class OriginChecksContext {
     }
 
     /**
-     * Reports whether checks can be published for this job, recording the reasons why not in
-     * {@code logger} so that they can be surfaced to the user on request.
+     * Reports whether checks can be published for this build, writing the reason why not to
+     * {@code listener} so that the user sees it in the build log.
+     *
+     * <p>A build whose SCM source is not an {@link OriginSCMSource} is the one case that says nothing:
+     * the checks API asks every registered factory about every build, so declining those is the
+     * contract rather than a misconfiguration, and explaining it would put a line in the log of every
+     * unrelated build in the instance. Every other reason is worth the user's attention.
      */
-    boolean isValid(@NonNull FilteredLog logger) {
+    boolean isValid(@NonNull TaskListener listener) {
         Optional<OriginSCMSource> source = resolveSource();
         if (source.isEmpty()) {
-            logger.logError("Job does not use a Cursor Origin SCM source");
             return false;
         }
+        PluginLogger logger = new PluginLogger(listener.getLogger(), "Cursor Origin Checks");
         String credentialsId = source.get().getCredentialsId();
         if (credentialsId == null || credentialsId.isBlank()) {
-            logger.logError("No credentials configured on the Cursor Origin SCM source");
+            logger.log("No credentials configured on the Cursor Origin SCM source");
             return false;
         }
         if (scmFacade.findCredentials(job, credentialsId).isEmpty()) {
-            logger.logError("No Cursor Origin app credentials found with id: '%s'", credentialsId);
+            logger.log("No Cursor Origin app credentials found with id: '%s'", credentialsId);
             return false;
         }
         if (sha == null || sha.isBlank()) {
-            logger.logError("No HEAD SHA found for %s/%s", getRepoOwner(), getRepository());
+            logger.log("No HEAD SHA found for %s/%s", getRepoOwner(), getRepository());
             return false;
         }
         return true;

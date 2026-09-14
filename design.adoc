@@ -146,15 +146,18 @@ build status, `Tests` for a test report), so they appear side by side under one 
   `@Extension`. Claims a build when its SCM source is an `OriginSCMSource` with resolvable
   credentials and a resolvable head SHA, and declines it otherwise; the checks API asks every
   registered factory in turn and takes the first that claims the build.
-  When it declines a build that *is* Origin backed it writes the reasons to the build log, since
-  that is a misconfiguration the user wants to see. Declining a build that is not Origin backed is
-  the contract rather than a problem, so those stay silent and unrelated builds get no output.
   Only the `Run` overload is implemented; see <<checks-no-queued>>.
 
 `OriginChecksContext`::
   Resolves the repository, head SHA, credentials, build URL and the suite/check identities.
   Always created from a `Run`, with the revision read from the build's own `SCMRevisionAction`, so
   no API call and no guesswork is involved.
+  `isValid(TaskListener)` decides whether a check is publishable and writes the reason why not
+  straight to the build log, since a missing credential or an unresolvable SHA is a misconfiguration
+  the user wants to see. The one silent case is a build whose source is not an `OriginSCMSource`:
+  the checks API asks every factory about every build, so declining those is the contract rather
+  than a problem, and explaining it would put a line in the log of every unrelated build in the
+  instance.
 
 `OriginChecksDetails`::
   Translates `ChecksDetails` into `CheckRunInput` / `CheckRunOutput` / `CheckRunAnnotationInput`,
