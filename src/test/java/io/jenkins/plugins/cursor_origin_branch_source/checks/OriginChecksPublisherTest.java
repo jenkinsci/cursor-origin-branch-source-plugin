@@ -4,8 +4,10 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.endsWith;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
@@ -195,6 +197,39 @@ class OriginChecksPublisherTest extends MockOriginServerTestBase {
                 mockServer.checkRun(OWNER, REPOSITORY, "Jenkins").getAnnotations(),
                 hasSize(OriginChecksPublisher.MAX_ANNOTATIONS_PER_CHECK_RUN));
         assertThat(consoleLog(), containsString("dropping 10 of 110 annotations of check 'Jenkins'"));
+    }
+
+    /**
+     * The mock server enforces Origin's size limits, so an untruncated oversized annotation would be
+     * rejected and lost along with the rest of its batch. It has to arrive shortened instead, and the
+     * build log has to say so, since the reader is otherwise looking at silently altered output.
+     */
+    @Test
+    void publishesAnOversizedAnnotationTruncatedAndSaysSo() {
+        ChecksOutput.ChecksOutputBuilder output =
+                new ChecksOutput.ChecksOutputBuilder().withTitle("title").withSummary("summary");
+        output.addAnnotation(new ChecksAnnotation.ChecksAnnotationBuilder()
+                .withPath("Example.java")
+                .withLine(1)
+                .withAnnotationLevel(ChecksAnnotation.ChecksAnnotationLevel.WARNING)
+                .withMessage("m".repeat(OriginChecksDetails.MAX_OUTPUT_SIZE_BYTES + 1000))
+                .build());
+
+        publish(new ChecksDetails.ChecksDetailsBuilder()
+                .withName("Jenkins")
+                .withStatus(ChecksStatus.COMPLETED)
+                .withConclusion(ChecksConclusion.SUCCESS)
+                .withOutput(output.build())
+                .build());
+
+        List<MockOriginServer.MockAnnotation> published =
+                mockServer.checkRun(OWNER, REPOSITORY, "Jenkins").getAnnotations();
+        assertThat(published, hasSize(1));
+        assertThat(
+                published.get(0).message().getBytes(StandardCharsets.UTF_8).length,
+                is(lessThanOrEqualTo(OriginChecksDetails.MAX_OUTPUT_SIZE_BYTES)));
+        assertThat(published.get(0).message(), endsWith(OriginChecksDetails.TRUNCATION_MARKER));
+        assertThat(consoleLog(), containsString("Truncated the message of 1 annotation(s)"));
     }
 
     /**

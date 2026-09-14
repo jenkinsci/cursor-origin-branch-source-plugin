@@ -2,7 +2,10 @@ package io.jenkins.plugins.cursor_origin_branch_source.checks;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.endsWith;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
@@ -190,7 +193,114 @@ class OriginChecksDetailsTest {
                         .build())
                 .build());
 
-        assertThat(details.getOutput().orElseThrow().getTitle(), is("t".repeat(OriginChecksDetails.MAX_TITLE_LENGTH)));
+        String published = details.getOutput().orElseThrow().getTitle();
+        assertThat(published.codePointCount(0, published.length()), is(OriginChecksDetails.MAX_TITLE_LENGTH));
+        assertThat(published, endsWith(OriginChecksDetails.TRUNCATION_MARKER));
+        assertThat(details.getTruncationWarnings(), contains(containsString("check output title")));
+    }
+
+    /**
+     * An oversized annotation is published shortened rather than dropped, or rejected by Origin and so
+     * lost along with the rest of its batch. The build log says what was cut.
+     */
+    @Test
+    void oversizedAnnotationFieldsAreTruncatedAndReported() {
+        String message = "m".repeat(OriginChecksDetails.MAX_OUTPUT_SIZE_BYTES + 500);
+        String rawDetails = "r".repeat(OriginChecksDetails.MAX_OUTPUT_SIZE_BYTES + 500);
+        String title = "t".repeat(OriginChecksDetails.MAX_TITLE_LENGTH + 10);
+        OriginChecksDetails details = detailsWith(new ChecksAnnotation.ChecksAnnotationBuilder()
+                .withPath("src/Main.java")
+                .withStartLine(1)
+                .withEndLine(1)
+                .withAnnotationLevel(ChecksAnnotation.ChecksAnnotationLevel.WARNING)
+                .withMessage(message)
+                .withRawDetails(rawDetails)
+                .withTitle(title)
+                .build());
+
+        CheckRunAnnotationInput annotation = details.getAnnotations().get(0);
+        assertThat(
+                annotation.getMessage().getBytes(StandardCharsets.UTF_8).length,
+                is(lessThanOrEqualTo(OriginChecksDetails.MAX_OUTPUT_SIZE_BYTES)));
+        assertThat(annotation.getMessage(), endsWith(OriginChecksDetails.TRUNCATION_MARKER));
+        assertThat(
+                annotation.getRawDetails().getBytes(StandardCharsets.UTF_8).length,
+                is(lessThanOrEqualTo(OriginChecksDetails.MAX_OUTPUT_SIZE_BYTES)));
+        assertThat(annotation.getRawDetails(), endsWith(OriginChecksDetails.TRUNCATION_MARKER));
+        assertThat(annotation.getTitle(), endsWith(OriginChecksDetails.TRUNCATION_MARKER));
+        // The annotation is still complete enough to be useful.
+        assertThat(annotation.getLocation().getPath(), is("src/Main.java"));
+
+        assertThat(
+                details.getTruncationWarnings(),
+                containsInAnyOrder(
+                        containsString("message of 1 annotation(s)"),
+                        containsString("rawDetails of 1 annotation(s)"),
+                        containsString("title of 1 annotation(s)")));
+    }
+
+    /** Cutting mid-character would produce invalid UTF-8, which Origin would reject outright. */
+    @Test
+    void truncationNeverSplitsAMultiByteCharacter() {
+        // Four bytes each, so the limit falls inside a character rather than between two.
+        String message = "\uD83D\uDE00".repeat(OriginChecksDetails.MAX_OUTPUT_SIZE_BYTES / 3);
+        OriginChecksDetails details = detailsWith(new ChecksAnnotation.ChecksAnnotationBuilder()
+                .withPath("src/Main.java")
+                .withStartLine(1)
+                .withEndLine(1)
+                .withAnnotationLevel(ChecksAnnotation.ChecksAnnotationLevel.WARNING)
+                .withMessage(message)
+                .build());
+
+        String published = details.getAnnotations().get(0).getMessage();
+        byte[] bytes = published.getBytes(StandardCharsets.UTF_8);
+        assertThat(bytes.length, is(lessThanOrEqualTo(OriginChecksDetails.MAX_OUTPUT_SIZE_BYTES)));
+        // A round trip only survives unchanged when every character was kept whole.
+        assertThat(new String(bytes, StandardCharsets.UTF_8), is(published));
+        assertThat(published, endsWith(OriginChecksDetails.TRUNCATION_MARKER));
+    }
+
+    @Test
+    void nothingIsReportedWhenEverythingFits() {
+        OriginChecksDetails details = detailsWith(new ChecksAnnotation.ChecksAnnotationBuilder()
+                .withPath("src/Main.java")
+                .withStartLine(1)
+                .withEndLine(1)
+                .withAnnotationLevel(ChecksAnnotation.ChecksAnnotationLevel.WARNING)
+                .withMessage("short")
+                .withTitle("also short")
+                .build());
+
+        assertThat(details.getAnnotations(), hasSize(1));
+        assertThat(details.getTruncationWarnings(), is(empty()));
+    }
+
+    /** Counting per field must not double up if the annotations are read more than once. */
+    @Test
+    void truncationIsCountedOncePerField() {
+        OriginChecksDetails details = detailsWith(new ChecksAnnotation.ChecksAnnotationBuilder()
+                .withPath("src/Main.java")
+                .withStartLine(1)
+                .withEndLine(1)
+                .withAnnotationLevel(ChecksAnnotation.ChecksAnnotationLevel.WARNING)
+                .withMessage("m".repeat(OriginChecksDetails.MAX_OUTPUT_SIZE_BYTES + 1))
+                .build());
+
+        details.getAnnotations();
+        details.getAnnotations();
+        details.getOutput();
+
+        assertThat(details.getTruncationWarnings(), contains(containsString("message of 1 annotation(s)")));
+    }
+
+    private static OriginChecksDetails detailsWith(ChecksAnnotation annotation) {
+        return new OriginChecksDetails(new ChecksDetails.ChecksDetailsBuilder()
+                .withName("check")
+                .withOutput(new ChecksOutput.ChecksOutputBuilder()
+                        .withSummary("summary")
+                        .withAnnotations(java.util.List.of(annotation))
+                        .build())
+                .build());
     }
 
     @Test

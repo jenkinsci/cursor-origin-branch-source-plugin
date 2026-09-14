@@ -227,6 +227,19 @@ batches of 25 that Origin accepts, stops at the 100-per-check-run cap (logging w
 records how many it has already sent on the run so that a repeated report of the same check does not
 duplicate them.
 
+Origin also caps the size of each field: 65535 UTF-8 bytes for `message` and `rawDetails`, 255
+Unicode characters for `title`. An oversized field is not a client error worth failing on — the
+annotation is still worth having — so `OriginChecksDetails` shortens it, appends
+`TRUNCATION_MARKER` so the reader can see something is missing, and reports one line per affected
+field to the build log. Truncation keeps whole code points, since a value cut mid-character is
+invalid UTF-8 and Origin rejects it. Nothing is silently altered: if the value fits, the log stays
+quiet.
+
+This matters more than it looks. Annotations go in batches of 25, and Origin rejects the whole
+request if any one of them is oversized, so a single long warnings-ng message would otherwise take
+24 innocent annotations down with it — and because annotation failures are deliberately non-fatal,
+that loss would show up only as annotations quietly missing from the check.
+
 Origin has no equivalent of the checks API's images or actions, so those are dropped.
 
 == Git Refspecs
@@ -352,7 +365,8 @@ accepting anything: the required identity fields, a conclusion exactly when the 
 `externalUpdatedAt` ordering that stops a stale report overwriting newer state. A publisher that got
 any of those wrong would fail the test rather than production. It also offers
 `rejectAnnotationsWith(status)` to exercise the error paths, and records every reported state of a
-check run so a test can assert the lifecycle.
+check run so a test can assert the lifecycle. It also enforces the per-field size limits, so dropping
+the truncation makes the affected tests fail with the same 400 that production would see.
 
 `OriginChecksITest` is the end-to-end test: a real multibranch build against `MockOriginServer` with
 nothing between the checks API and Origin stubbed out. It asserts that a branch build is reported as

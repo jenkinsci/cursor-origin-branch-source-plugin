@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.Filter;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwsHeader;
@@ -73,6 +74,12 @@ public class MockOriginServer implements Closeable {
 
     private static final int MAX_ANNOTATION_BATCH = 25;
     private static final int MAX_ANNOTATIONS_PER_CHECK_RUN = 100;
+
+    /** Origin's documented per-field limits: UTF-8 bytes for text, Unicode characters for a title. */
+    private static final int MAX_ANNOTATION_TEXT_BYTES = 65_535;
+
+    private static final int MAX_ANNOTATION_TITLE_CHARS = 255;
+    private static final int MAX_ANNOTATION_PATH_BYTES = 4_096;
 
     // ── in-memory data model ────────────────────────────────────────────────
 
@@ -890,11 +897,20 @@ public class MockOriginServer implements Closeable {
         List<MockAnnotation> created = new ArrayList<>();
         for (JsonNode annotation : annotations) {
             JsonNode location = annotation.path("location");
+            String level = requireText(annotation, "annotationLevel");
+            String message = requireText(annotation, "message");
+            String title = annotation.path("title").asText(null);
+            String rawDetails = annotation.path("rawDetails").asText(null);
+            String path = location.path("path").asText(null);
+            requireWithinBytes(message, MAX_ANNOTATION_TEXT_BYTES, "message");
+            requireWithinBytes(rawDetails, MAX_ANNOTATION_TEXT_BYTES, "rawDetails");
+            requireWithinBytes(path, MAX_ANNOTATION_PATH_BYTES, "location.path");
+            requireWithinChars(title, MAX_ANNOTATION_TITLE_CHARS, "title");
             created.add(new MockAnnotation(
-                    requireText(annotation, "annotationLevel"),
-                    requireText(annotation, "message"),
-                    annotation.path("title").asText(null),
-                    location.path("path").asText(null),
+                    level,
+                    message,
+                    title,
+                    path,
                     location.has("startLine") ? location.get("startLine").asInt() : null,
                     location.has("endLine") ? location.get("endLine").asInt() : null));
         }
@@ -1104,6 +1120,20 @@ public class MockOriginServer implements Closeable {
             return MAPPER.readTree(is);
         } catch (IOException e) {
             throw new HaltException(400, "malformed JSON request body");
+        }
+    }
+
+    /** Halts with 400 when {@code value} is longer than Origin accepts, in UTF-8 bytes. */
+    private static void requireWithinBytes(@CheckForNull String value, int maxBytes, String field) {
+        if (value != null && value.getBytes(StandardCharsets.UTF_8).length > maxBytes) {
+            throw new HaltException(400, field + " exceeds " + maxBytes + " bytes");
+        }
+    }
+
+    /** Halts with 400 when {@code value} is longer than Origin accepts, in Unicode characters. */
+    private static void requireWithinChars(@CheckForNull String value, int maxChars, String field) {
+        if (value != null && value.codePointCount(0, value.length()) > maxChars) {
+            throw new HaltException(400, field + " exceeds " + maxChars + " characters");
         }
     }
 
