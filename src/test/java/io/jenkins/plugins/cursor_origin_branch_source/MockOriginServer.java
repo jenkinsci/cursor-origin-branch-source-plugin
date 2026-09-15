@@ -44,6 +44,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
@@ -281,6 +282,12 @@ public class MockOriginServer implements Closeable {
 
     /** when set, annotation requests are rejected with this status instead of being stored */
     private Integer annotationFailureStatus;
+
+    /**
+     * Hands out annotation ids. Origin's are unique and time-sortable, so a per-request index would
+     * let the mock hide a client that muddled ids from different batches or check runs.
+     */
+    private final AtomicInteger nextAnnotationId = new AtomicInteger();
 
     /** key pair used to sign / verify access tokens */
     private final KeyPair serverKeyPair;
@@ -918,10 +925,9 @@ public class MockOriginServer implements Closeable {
         sendJson(he, 200, gen -> {
             gen.writeStartObject();
             gen.writeArrayFieldStart("annotations");
-            for (int i = 0; i < created.size(); i++) {
-                MockAnnotation annotation = created.get(i);
+            for (MockAnnotation annotation : created) {
                 gen.writeStartObject();
-                gen.writeStringField("id", "cra_" + i);
+                gen.writeStringField("id", "cra_" + nextAnnotationId.incrementAndGet());
                 gen.writeStringField("checkRunId", checkRun.id);
                 gen.writeStringField("annotationLevel", annotation.level());
                 gen.writeStringField("message", annotation.message());
