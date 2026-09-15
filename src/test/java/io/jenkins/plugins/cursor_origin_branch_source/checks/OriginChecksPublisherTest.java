@@ -9,12 +9,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.hamcrest.Matchers.nullValue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
-import hudson.model.Job;
 import hudson.model.Run;
 import io.jenkins.plugins.checks.api.ChecksAnnotation;
 import io.jenkins.plugins.checks.api.ChecksConclusion;
@@ -29,9 +24,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import jenkins.plugins.git.AbstractGitSCMSource;
 import jenkins.scm.api.SCMHead;
 import org.junit.jupiter.api.BeforeEach;
@@ -68,7 +61,9 @@ class OriginChecksPublisherTest extends MockOriginServerTestBase {
         assertThat(checkRun.getStatus(), is("queued"));
         assertThat(checkRun.getConclusion(), is(nullValue()));
         assertThat(checkRun.getHeadSha(), is(SHA));
-        assertThat(checkRun.getSuiteKey(), is("widgets"));
+        // The source has no owner here, so the suite key falls back to the job's full name;
+        // OriginChecksITest covers the multibranch case where the owner supplies it.
+        assertThat(checkRun.getSuiteKey(), is("widgets/main"));
         assertThat(checkRun.getExternalId(), is("widgets/main#3"));
         assertThat(checkRun.getDetailsUrl(), is(RUN_URL));
         assertThat(
@@ -129,7 +124,7 @@ class OriginChecksPublisherTest extends MockOriginServerTestBase {
      */
     @Test
     void updatesOneCheckRunAcrossTheLifecycleOfACheck() {
-        OriginChecksPublisher publisher = createPublisher(mockRun(mockJob()));
+        OriginChecksPublisher publisher = createPublisher(fakeRun());
 
         publisher.publish(new ChecksDetails.ChecksDetailsBuilder()
                 .withName("Jenkins")
@@ -149,7 +144,7 @@ class OriginChecksPublisherTest extends MockOriginServerTestBase {
 
     @Test
     void reportsEachCheckOfABuildSeparatelyWithinOneSuite() {
-        OriginChecksPublisher publisher = createPublisher(mockRun(mockJob()));
+        OriginChecksPublisher publisher = createPublisher(fakeRun());
 
         publisher.publish(completed("unit-tests"));
         publisher.publish(completed("integration-tests"));
@@ -161,7 +156,7 @@ class OriginChecksPublisherTest extends MockOriginServerTestBase {
                         .map(MockOriginServer.MockCheckRun::getSuiteKey)
                         .distinct()
                         .toList(),
-                contains("widgets"));
+                contains("widgets/main"));
     }
 
     @Test
@@ -238,8 +233,7 @@ class OriginChecksPublisherTest extends MockOriginServerTestBase {
      */
     @Test
     void doesNotResendAnnotationsOnASecondReportOfTheSameCheck() {
-        Run run = mockRun(mockJob());
-        recordActionsOn(run);
+        FakeRun run = fakeRun();
         OriginChecksPublisher publisher = createPublisher(run);
 
         publisher.publish(detailsWithAnnotations(2));
@@ -263,7 +257,7 @@ class OriginChecksPublisherTest extends MockOriginServerTestBase {
     /** A failure to report must never fail the build that is being reported on. */
     @Test
     void reportsRatherThanThrowsWhenOriginRejectsTheRequest() {
-        OriginChecksPublisher publisher = createPublisher(mockRun(mockJob()), "unknown-repo");
+        OriginChecksPublisher publisher = createPublisher(fakeRun(), "unknown-repo");
 
         publisher.publish(new ChecksDetails.ChecksDetailsBuilder()
                 .withName("Jenkins")
@@ -312,7 +306,7 @@ class OriginChecksPublisherTest extends MockOriginServerTestBase {
     }
 
     private void publish(ChecksDetails details) {
-        createPublisher(mockRun(mockJob())).publish(details);
+        createPublisher(fakeRun()).publish(details);
     }
 
     private OriginChecksPublisher createPublisher(Run run) {
@@ -326,49 +320,27 @@ class OriginChecksPublisherTest extends MockOriginServerTestBase {
     }
 
     /**
-     * Builds a context for a mocked job, with the SCM lookups stubbed but the credentials, token
-     * minting and HTTP traffic all real.
+     * Builds a context whose SCM lookups are supplied, but whose credentials, token minting and HTTP
+     * traffic are all real.
      */
     private OriginChecksContext createContext(Run run, String repository) {
         OriginSCMSource source = new OriginSCMSource(OWNER, repository);
         source.setCredentialsId(CREDS_ID);
-        OriginSCMFacade facade = mock(OriginSCMFacade.class);
-        when(facade.findOriginSCMSource(run.getParent())).thenReturn(Optional.of(source));
-        when(facade.findRevision(source, run))
-                .thenReturn(Optional.of(new AbstractGitSCMSource.SCMRevisionImpl(new SCMHead("main"), SHA)));
-        when(facade.findHash(any()))
-                .thenAnswer(invocation -> new OriginSCMFacade().findHash(invocation.getArgument(0)));
-        when(facade.findCredentials(run.getParent(), CREDS_ID)).thenReturn(Optional.of(credentials()));
+        FakeOriginSCMFacade facade = new FakeOriginSCMFacade()
+                .withSource(source)
+                .withRevision(new AbstractGitSCMSource.SCMRevisionImpl(new SCMHead("main"), SHA))
+                .withCredentials(credentials());
         return OriginChecksContext.fromRun(run, RUN_URL, facade);
     }
 
-    private static Job mockJob() {
-        Job job = mock(Job.class);
-        when(job.getFullName()).thenReturn("widgets");
-        when(job.getFullDisplayName()).thenReturn("widgets");
-        return job;
-    }
-
-    private static Run mockRun(Job job) {
-        Run run = mock(Run.class);
-        when(run.getParent()).thenReturn(job);
-        when(run.getExternalizableId()).thenReturn("widgets/main#3");
-        when(run.getActions(OriginChecksAction.class)).thenReturn(List.of());
-        return run;
-    }
-
-    /** Makes a mocked run remember the actions added to it, as a real run would. */
-    private static void recordActionsOn(Run run) {
-        List<OriginChecksAction> actions = new ArrayList<>();
-        doAnswer(invocation -> {
-                    if (invocation.getArgument(0) instanceof OriginChecksAction action) {
-                        actions.add(action);
-                    }
-                    return null;
-                })
-                .when(run)
-                .addAction(any());
-        when(run.getActions(OriginChecksAction.class)).thenReturn(actions);
+    /**
+     * A build of the {@code main} branch job of a {@code widgets} project, so the identities the
+     * publisher sends are consistent with each other rather than stubbed independently. Actions are
+     * held by {@code Actionable} itself, so a real run records the ones the publisher attaches without
+     * any help from the test.
+     */
+    private static FakeRun fakeRun() {
+        return new FakeRun(new FakeJob("widgets", "main"), 3);
     }
 
     private String consoleLog() {

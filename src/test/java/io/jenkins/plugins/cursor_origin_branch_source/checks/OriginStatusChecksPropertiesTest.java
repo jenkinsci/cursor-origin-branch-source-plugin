@@ -2,20 +2,15 @@ package io.jenkins.plugins.cursor_origin_branch_source.checks;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
-import hudson.model.Job;
 import io.jenkins.plugins.cursor_origin_branch_source.BranchDiscoveryTrait;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginSCMSource;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
-@SuppressWarnings("rawtypes")
 class OriginStatusChecksPropertiesTest {
 
-    private final Job job = mock(Job.class);
+    private final FakeJob job = new FakeJob("widgets", "main");
 
     @Test
     void appliesToOriginBackedJobsOnly() {
@@ -54,8 +49,6 @@ class OriginStatusChecksPropertiesTest {
     }
 
     private OriginStatusChecksProperties createProperties(OriginSCMSource source) {
-        OriginSCMFacade facade = mock(OriginSCMFacade.class);
-        when(facade.findOriginSCMSource(job)).thenReturn(Optional.ofNullable(source));
-        return new OriginStatusChecksProperties(facade);
+        return new OriginStatusChecksProperties(new FakeOriginSCMFacade().withSource(source));
     }
 }

@@ -5,13 +5,10 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.emptyString;
 import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
-import hudson.model.Job;
-import hudson.model.Run;
+import com.cloudbees.plugins.credentials.CredentialsScope;
 import hudson.model.TaskListener;
+import hudson.util.Secret;
 import hudson.util.StreamTaskListener;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginAppCredentials;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginPullRequestSCMHead;
@@ -19,7 +16,6 @@ import io.jenkins.plugins.cursor_origin_branch_source.OriginPullRequestSCMRevisi
 import io.jenkins.plugins.cursor_origin_branch_source.OriginSCMSource;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.Optional;
 import jenkins.plugins.git.AbstractGitSCMSource;
 import jenkins.scm.api.SCMHead;
 import jenkins.scm.api.SCMRevision;
@@ -41,10 +37,10 @@ class OriginChecksContextTest {
 
     @Test
     void resolvesRepositoryCoordinatesFromTheSource() {
-        Job job = mockJob();
-        Run run = mockRun(job);
+        FakeJob job = fakeJob();
+        FakeRun run = fakeRun(job);
         OriginSCMSource source = createSource();
-        OriginSCMFacade facade = mockFacadeWithSource(job, source);
+        FakeOriginSCMFacade facade = facadeWithSource(source);
 
         OriginChecksContext context = OriginChecksContext.fromRun(run, URL, facade);
 
@@ -57,14 +53,13 @@ class OriginChecksContextTest {
 
     @Test
     void readsTheShaOfABranchBuildFromTheRun() {
-        Job job = mockJob();
-        Run run = mockRun(job);
+        FakeJob job = fakeJob();
+        FakeRun run = fakeRun(job);
         OriginSCMSource source = createSource();
         SCMHead head = new SCMHead("main");
         SCMRevision revision = new AbstractGitSCMSource.SCMRevisionImpl(head, BRANCH_SHA);
 
-        OriginSCMFacade facade = mockFacadeWithSource(job, source);
-        when(facade.findRevision(source, run)).thenReturn(Optional.of(revision));
+        FakeOriginSCMFacade facade = facadeWithSource(source).withRevision(revision);
 
         assertThat(OriginChecksContext.fromRun(run, URL, facade).getHeadSha(), is(BRANCH_SHA));
     }
@@ -75,23 +70,22 @@ class OriginChecksContextTest {
      */
     @Test
     void reportsAPullRequestAgainstItsHeadSha() {
-        Job job = mockJob();
-        Run run = mockRun(job);
+        FakeJob job = fakeJob();
+        FakeRun run = fakeRun(job);
         OriginSCMSource source = createSource();
         OriginPullRequestSCMHead head = new OriginPullRequestSCMHead("7", "feature-x", "main");
         SCMRevision revision = new OriginPullRequestSCMRevision(head, PR_HEAD_SHA, PR_BASE_SHA);
 
-        OriginSCMFacade facade = mockFacadeWithSource(job, source);
-        when(facade.findRevision(source, run)).thenReturn(Optional.of(revision));
+        FakeOriginSCMFacade facade = facadeWithSource(source).withRevision(revision);
 
         assertThat(OriginChecksContext.fromRun(run, URL, facade).getHeadSha(), is(PR_HEAD_SHA));
     }
 
     @Test
     void unresolvableShaIsReportedRatherThanGuessed() {
-        Job job = mockJob();
-        Run run = mockRun(job);
-        OriginSCMFacade facade = mockFacadeWithSource(job, createSource());
+        FakeJob job = fakeJob();
+        FakeRun run = fakeRun(job);
+        FakeOriginSCMFacade facade = facadeWithSource(createSource());
 
         OriginChecksContext context = OriginChecksContext.fromRun(run, URL, facade);
 
@@ -101,9 +95,9 @@ class OriginChecksContextTest {
 
     @Test
     void identifiesEachBuildAsItsOwnAttempt() {
-        Job job = mockJob();
-        Run run = mockRun(job);
-        OriginSCMFacade facade = mockFacadeWithSource(job, createSource());
+        FakeJob job = fakeJob();
+        FakeRun run = fakeRun(job);
+        FakeOriginSCMFacade facade = facadeWithSource(createSource());
 
         assertThat(OriginChecksContext.fromRun(run, URL, facade).getExternalId(), is("widgets/main#3"));
     }
@@ -114,9 +108,9 @@ class OriginChecksContextTest {
      */
     @Test
     void groupsChecksOfAllBranchesIntoOneSuite() {
-        Job job = mockJob();
-        Run run = mockRun(job);
-        OriginSCMFacade facade = mockFacadeWithSource(job, createSource());
+        FakeJob job = fakeJob();
+        FakeRun run = fakeRun(job);
+        FakeOriginSCMFacade facade = facadeWithSource(createSource());
 
         OriginChecksContext context = OriginChecksContext.fromRun(run, URL, facade);
 
@@ -130,10 +124,9 @@ class OriginChecksContextTest {
      */
     @Test
     void isNotValidAndSaysNothingForAJobWithoutAnOriginSource() {
-        Job job = mockJob();
-        Run run = mockRun(job);
-        OriginSCMFacade facade = mock(OriginSCMFacade.class);
-        when(facade.findOriginSCMSource(job)).thenReturn(Optional.empty());
+        FakeJob job = fakeJob();
+        FakeRun run = fakeRun(job);
+        FakeOriginSCMFacade facade = new FakeOriginSCMFacade();
 
         assertThat(OriginChecksContext.fromRun(run, URL, facade).isValid(listener()), is(false));
         assertThat(buildLog(), is(emptyString()));
@@ -141,10 +134,10 @@ class OriginChecksContextTest {
 
     @Test
     void isNotValidWithoutConfiguredCredentials() {
-        Job job = mockJob();
-        Run run = mockRun(job);
+        FakeJob job = fakeJob();
+        FakeRun run = fakeRun(job);
         OriginSCMSource source = new OriginSCMSource(OWNER, REPOSITORY);
-        OriginSCMFacade facade = mockFacadeWithSource(job, source);
+        FakeOriginSCMFacade facade = facadeWithSource(source);
 
         assertThat(OriginChecksContext.fromRun(run, URL, facade).isValid(listener()), is(false));
         assertThat(buildLog(), containsString("No credentials configured on the Cursor Origin SCM source"));
@@ -152,9 +145,9 @@ class OriginChecksContextTest {
 
     @Test
     void isNotValidWhenTheConfiguredCredentialsAreMissing() {
-        Job job = mockJob();
-        Run run = mockRun(job);
-        OriginSCMFacade facade = mockFacadeWithSource(job, createSource());
+        FakeJob job = fakeJob();
+        FakeRun run = fakeRun(job);
+        FakeOriginSCMFacade facade = facadeWithSource(createSource());
 
         assertThat(OriginChecksContext.fromRun(run, URL, facade).isValid(listener()), is(false));
         assertThat(buildLog(), containsString("No Cursor Origin app credentials found with id: 'origin-creds'"));
@@ -162,10 +155,10 @@ class OriginChecksContextTest {
 
     @Test
     void isNotValidWithoutAResolvableSha() {
-        Job job = mockJob();
-        Run run = mockRun(job);
-        OriginSCMFacade facade = mockFacadeWithSource(job, createSource());
-        when(facade.findCredentials(job, CREDENTIALS_ID)).thenReturn(Optional.of(mock(OriginAppCredentials.class)));
+        FakeJob job = fakeJob();
+        FakeRun run = fakeRun(job);
+        FakeOriginSCMFacade facade = facadeWithSource(createSource());
+        facade.withCredentials(someCredentials());
 
         assertThat(OriginChecksContext.fromRun(run, URL, facade).isValid(listener()), is(false));
         assertThat(buildLog(), containsString("No HEAD SHA found for acme-corp/widgets"));
@@ -173,15 +166,14 @@ class OriginChecksContextTest {
 
     @Test
     void isValidForAFullyConfiguredOriginJob() {
-        Job job = mockJob();
-        Run run = mockRun(job);
+        FakeJob job = fakeJob();
+        FakeRun run = fakeRun(job);
         OriginSCMSource source = createSource();
         SCMHead head = new SCMHead("main");
 
-        OriginSCMFacade facade = mockFacadeWithSource(job, source);
-        when(facade.findRevision(source, run))
-                .thenReturn(Optional.of(new AbstractGitSCMSource.SCMRevisionImpl(head, BRANCH_SHA)));
-        when(facade.findCredentials(job, CREDENTIALS_ID)).thenReturn(Optional.of(mock(OriginAppCredentials.class)));
+        FakeOriginSCMFacade facade =
+                facadeWithSource(source).withRevision(new AbstractGitSCMSource.SCMRevisionImpl(head, BRANCH_SHA));
+        facade.withCredentials(someCredentials());
 
         assertThat(OriginChecksContext.fromRun(run, URL, facade).isValid(listener()), is(true));
         assertThat(buildLog(), is(emptyString()));
@@ -202,29 +194,26 @@ class OriginChecksContextTest {
         return source;
     }
 
-    /**
-     * Returns a facade that resolves the source and delegates hash extraction to the real
-     * implementation, since that is the mapping the context relies on.
-     */
-    private static OriginSCMFacade mockFacadeWithSource(Job job, OriginSCMSource source) {
-        OriginSCMFacade facade = mock(OriginSCMFacade.class);
-        when(facade.findOriginSCMSource(job)).thenReturn(Optional.of(source));
-        when(facade.findHash(any()))
-                .thenAnswer(invocation -> new OriginSCMFacade().findHash(invocation.getArgument(0)));
-        return facade;
+    private static FakeOriginSCMFacade facadeWithSource(OriginSCMSource source) {
+        return new FakeOriginSCMFacade().withSource(source);
     }
 
-    private static Job mockJob() {
-        Job job = mock(Job.class);
-        when(job.getFullName()).thenReturn("widgets/main");
-        when(job.getFullDisplayName()).thenReturn("widgets » main");
-        return job;
+    /** A credentials object only has to exist for these tests; nothing authenticates with it. */
+    private static OriginAppCredentials someCredentials() {
+        return new OriginAppCredentials(
+                CredentialsScope.GLOBAL,
+                CREDENTIALS_ID,
+                "Test app credentials",
+                "test-app-1",
+                "inst-42",
+                Secret.fromString("not-a-real-key"));
     }
 
-    private static Run mockRun(Job job) {
-        Run run = mock(Run.class);
-        when(run.getParent()).thenReturn(job);
-        when(run.getExternalizableId()).thenReturn("widgets/main#3");
-        return run;
+    private static FakeJob fakeJob() {
+        return new FakeJob("widgets", "main");
+    }
+
+    private static FakeRun fakeRun(FakeJob job) {
+        return new FakeRun(job, 3);
     }
 }

@@ -6,13 +6,12 @@ import static org.hamcrest.Matchers.emptyString;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
+import com.cloudbees.plugins.credentials.CredentialsScope;
 import hudson.model.Job;
 import hudson.model.Run;
 import hudson.model.TaskListener;
+import hudson.util.Secret;
 import hudson.util.StreamTaskListener;
 import io.jenkins.plugins.checks.api.ChecksPublisher;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginAppCredentials;
@@ -35,13 +34,12 @@ class OriginChecksPublisherFactoryTest {
 
     @Test
     void createsAPublisherForAnOriginBackedBuild() {
-        Job job = mockJob();
-        Run run = mockRun(job);
+        FakeJob job = fakeJob();
+        FakeRun run = fakeRun(job);
         OriginSCMSource source = createSource();
-        OriginSCMFacade facade = mockFacade(job, source);
-        when(facade.findRevision(source, run))
-                .thenReturn(Optional.of(new AbstractGitSCMSource.SCMRevisionImpl(new SCMHead("main"), SHA)));
-        when(facade.findCredentials(job, CREDENTIALS_ID)).thenReturn(Optional.of(mock(OriginAppCredentials.class)));
+        FakeOriginSCMFacade facade = facadeWithSource(source)
+                .withRevision(new AbstractGitSCMSource.SCMRevisionImpl(new SCMHead("main"), SHA))
+                .withCredentials(someCredentials());
 
         Optional<ChecksPublisher> publisher = createFactory(facade).createPublisher(run, listener());
 
@@ -51,19 +49,18 @@ class OriginChecksPublisherFactoryTest {
     /** Declining a job that has nothing to do with Cursor Origin is part of the checks API contract. */
     @Test
     void declinesAJobThatIsNotOriginBacked() {
-        Job job = mockJob();
-        Run run = mockRun(job);
-        OriginSCMFacade facade = mock(OriginSCMFacade.class);
-        when(facade.findOriginSCMSource(job)).thenReturn(Optional.empty());
+        FakeJob job = fakeJob();
+        FakeRun run = fakeRun(job);
+        FakeOriginSCMFacade facade = new FakeOriginSCMFacade();
 
         assertThat(createFactory(facade).createPublisher(run, listener()), is(Optional.empty()));
     }
 
     @Test
     void declinesAnOriginJobWithoutCredentials() {
-        Job job = mockJob();
-        Run run = mockRun(job);
-        OriginSCMFacade facade = mockFacade(job, new OriginSCMSource("acme-corp", "widgets"));
+        FakeJob job = fakeJob();
+        FakeRun run = fakeRun(job);
+        FakeOriginSCMFacade facade = facadeWithSource(new OriginSCMSource("acme-corp", "widgets"));
 
         assertThat(createFactory(facade).createPublisher(run, listener()), is(Optional.empty()));
     }
@@ -71,10 +68,9 @@ class OriginChecksPublisherFactoryTest {
     /** Declining a job that is not Origin backed is normal, so it is not worth a word in its log. */
     @Test
     void staysQuietAboutJobsThatAreNotOriginBacked() {
-        Job job = mockJob();
-        Run run = mockRun(job);
-        OriginSCMFacade facade = mock(OriginSCMFacade.class);
-        when(facade.findOriginSCMSource(job)).thenReturn(Optional.empty());
+        FakeJob job = fakeJob();
+        FakeRun run = fakeRun(job);
+        FakeOriginSCMFacade facade = new FakeOriginSCMFacade();
 
         createFactory(facade).createPublisher(run, listener());
 
@@ -83,9 +79,9 @@ class OriginChecksPublisherFactoryTest {
 
     @Test
     void explainsWhyItDeclinedAnOriginBackedJob() {
-        Job job = mockJob();
-        Run run = mockRun(job);
-        OriginSCMFacade facade = mockFacade(job, createSource());
+        FakeJob job = fakeJob();
+        FakeRun run = fakeRun(job);
+        FakeOriginSCMFacade facade = facadeWithSource(createSource());
 
         createFactory(facade).createPublisher(run, listener());
 
@@ -94,9 +90,9 @@ class OriginChecksPublisherFactoryTest {
 
     @Test
     void reportsCredentialProblemsRatherThanTheAbsenceOfASource() {
-        Job job = mockJob();
-        Run run = mockRun(job);
-        OriginSCMFacade facade = mockFacade(job, createSource());
+        FakeJob job = fakeJob();
+        FakeRun run = fakeRun(job);
+        FakeOriginSCMFacade facade = facadeWithSource(createSource());
 
         createFactory(facade).createPublisher(run, listener());
 
@@ -104,10 +100,31 @@ class OriginChecksPublisherFactoryTest {
     }
 
     private OriginChecksPublisherFactory createFactory(OriginSCMFacade facade) {
-        DisplayURLProvider urlProvider = mock(DisplayURLProvider.class);
-        when(urlProvider.getRunURL(any())).thenReturn("http://localhost:8080/job/widgets/job/main/3/");
-        when(urlProvider.getJobURL(any())).thenReturn("http://localhost:8080/job/widgets/job/main/");
-        return new OriginChecksPublisherFactory(facade, urlProvider);
+        return new OriginChecksPublisherFactory(facade, new FixedDisplayURLProvider());
+    }
+
+    /** Supplies the one URL the factory asks for; anything else would be an unnoticed new dependency. */
+    private static final class FixedDisplayURLProvider extends DisplayURLProvider {
+
+        @Override
+        public String getRunURL(Run<?, ?> run) {
+            return "http://localhost:8080/job/widgets/job/main/3/";
+        }
+
+        @Override
+        public String getJobURL(Job<?, ?> job) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public String getChangesURL(Run<?, ?> run) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public String getTestsURL(Run<?, ?> run) {
+            throw new UnsupportedOperationException();
+        }
     }
 
     private TaskListener listener() {
@@ -124,25 +141,26 @@ class OriginChecksPublisherFactoryTest {
         return source;
     }
 
-    private static OriginSCMFacade mockFacade(Job job, OriginSCMSource source) {
-        OriginSCMFacade facade = mock(OriginSCMFacade.class);
-        when(facade.findOriginSCMSource(job)).thenReturn(Optional.of(source));
-        when(facade.findHash(any()))
-                .thenAnswer(invocation -> new OriginSCMFacade().findHash(invocation.getArgument(0)));
-        return facade;
+    private static FakeOriginSCMFacade facadeWithSource(OriginSCMSource source) {
+        return new FakeOriginSCMFacade().withSource(source);
     }
 
-    private static Job mockJob() {
-        Job job = mock(Job.class);
-        when(job.getFullName()).thenReturn("widgets/main");
-        when(job.getFullDisplayName()).thenReturn("widgets » main");
-        return job;
+    /** A credentials object only has to exist for these tests; nothing authenticates with it. */
+    private static OriginAppCredentials someCredentials() {
+        return new OriginAppCredentials(
+                CredentialsScope.GLOBAL,
+                CREDENTIALS_ID,
+                "Test app credentials",
+                "test-app-1",
+                "inst-42",
+                Secret.fromString("not-a-real-key"));
     }
 
-    private static Run mockRun(Job job) {
-        Run run = mock(Run.class);
-        when(run.getParent()).thenReturn(job);
-        when(run.getExternalizableId()).thenReturn("widgets/main#3");
-        return run;
+    private static FakeJob fakeJob() {
+        return new FakeJob("widgets", "main");
+    }
+
+    private static FakeRun fakeRun(FakeJob job) {
+        return new FakeRun(job, 3);
     }
 }
