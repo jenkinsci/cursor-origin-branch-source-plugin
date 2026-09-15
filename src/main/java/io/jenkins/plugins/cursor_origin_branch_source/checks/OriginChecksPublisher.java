@@ -210,9 +210,19 @@ class OriginChecksPublisher extends ChecksPublisher {
         return action;
     }
 
+    /**
+     * Reports a failure without dumping the whole check into the system log. {@code ChecksDetails}
+     * interpolates its full summary, text and every annotation, so at Origin's limits one record
+     * could run to hundreds of kilobytes — and because {@link #sanitize} strips the line breaks, all
+     * on one line. The identity goes in at {@code WARNING} and the payload at {@code FINE}.
+     */
     private void logFailure(ChecksDetails details, Exception e) {
         String message = "Failed publishing Cursor Origin checks: ";
-        SYSTEM_LOGGER.log(Level.WARNING, sanitize(message + details), e);
+        SYSTEM_LOGGER.log(
+                Level.WARNING,
+                sanitize(message + details.getName().orElse("(unnamed)") + " " + details.getStatus()),
+                e);
+        SYSTEM_LOGGER.log(Level.FINE, () -> sanitize(message + details));
         buildLogger.log("%s", message + e);
     }
 
