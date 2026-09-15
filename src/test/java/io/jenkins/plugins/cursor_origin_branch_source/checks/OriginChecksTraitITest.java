@@ -1,10 +1,11 @@
 package io.jenkins.plugins.cursor_origin_branch_source.checks;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
 
+import hudson.ExtensionList;
 import hudson.model.FreeStyleProject;
 import io.jenkins.plugins.checks.api.ChecksPublisher;
 import io.jenkins.plugins.checks.api.ChecksPublisherFactory;
@@ -13,7 +14,6 @@ import io.jenkins.plugins.cursor_origin_branch_source.OriginSCMSource;
 import java.util.List;
 import jenkins.branch.BranchSource;
 import jenkins.scm.api.trait.SCMSourceTrait;
-import jenkins.scm.api.trait.SCMSourceTraitDescriptor;
 import org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject;
 import org.junit.jupiter.api.Test;
 import org.jvnet.hudson.test.JenkinsRule;
@@ -25,13 +25,12 @@ class OriginChecksTraitITest {
     /** The trait must be offered on Cursor Origin sources so that its settings can be configured. */
     @Test
     void isOfferedAsATraitOfAnOriginSource(JenkinsRule r) {
-        List<SCMSourceTraitDescriptor> descriptors = new OriginSCMSource.DescriptorImpl().getTraitDescriptors();
+        OriginSCMSource.DescriptorImpl sourceDescriptor =
+                ExtensionList.lookupSingleton(OriginSCMSource.DescriptorImpl.class);
 
         assertThat(
-                descriptors.stream()
-                        .filter(OriginChecksTrait.DescriptorImpl.class::isInstance)
-                        .toList(),
-                hasSize(1));
+                sourceDescriptor.getTraitDescriptors(),
+                hasItem(ExtensionList.lookupSingleton(OriginChecksTrait.DescriptorImpl.class)));
     }
 
     @Test
