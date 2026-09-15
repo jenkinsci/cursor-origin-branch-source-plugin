@@ -33,6 +33,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
+import jenkins.plugins.git.GitCredentialContextualizer;
 import jenkins.security.SlaveToMasterCallable;
 import jenkins.util.JenkinsJVM;
 import org.jenkinsci.plugins.variant.OptionalExtension;
@@ -130,9 +131,9 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
     }
 
     @Extension
-    public static final class GitSCMContextualizer implements GitSCM.Contextualizer {
+    public static final class GitSCMContextualizer implements GitCredentialContextualizer {
         @Override
-        public StandardUsernameCredentials forContext(
+        public StandardUsernameCredentials contextualize(
                 StandardUsernameCredentials credentials, Run<?, ?> build, String url) {
             if (credentials instanceof OriginAppCredentials c) {
                 if (c.unrestricted) {
