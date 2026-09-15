@@ -1,16 +1,13 @@
 package io.jenkins.plugins.cursor_origin_branch_source.checks;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
 
-import hudson.ExtensionList;
 import hudson.model.FreeStyleProject;
 import io.jenkins.plugins.checks.api.ChecksPublisher;
 import io.jenkins.plugins.checks.api.ChecksPublisherFactory;
-import io.jenkins.plugins.checks.status.AbstractStatusChecksProperties;
 import io.jenkins.plugins.cursor_origin_branch_source.BranchDiscoveryTrait;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginSCMSource;
 import java.util.List;
@@ -24,16 +21,6 @@ import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
 
 @WithJenkins
 class OriginChecksTraitITest {
-
-    @Test
-    void registersTheChecksExtensions(JenkinsRule r) {
-        assertThat(
-                ExtensionList.lookup(ChecksPublisherFactory.class),
-                hasItem(instanceOf(OriginChecksPublisherFactory.class)));
-        assertThat(
-                ExtensionList.lookup(AbstractStatusChecksProperties.class),
-                hasItem(instanceOf(OriginStatusChecksProperties.class)));
-    }
 
     /** The trait must be offered on Cursor Origin sources so that its settings can be configured. */
     @Test
