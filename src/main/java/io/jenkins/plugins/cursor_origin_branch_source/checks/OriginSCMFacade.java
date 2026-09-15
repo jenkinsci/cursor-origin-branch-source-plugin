@@ -9,7 +9,6 @@ import hudson.security.ACL;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginAppCredentials;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginPullRequestSCMRevision;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginSCMSource;
-import java.util.Collections;
 import java.util.Optional;
 import jenkins.plugins.git.AbstractGitSCMSource;
 import jenkins.scm.api.SCMRevision;
