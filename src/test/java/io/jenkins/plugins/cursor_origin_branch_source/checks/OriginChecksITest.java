@@ -1,12 +1,12 @@
 package io.jenkins.plugins.cursor_origin_branch_source.checks;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
 
 import hudson.model.Result;
@@ -82,8 +82,11 @@ class OriginChecksITest extends MockOriginServerTestBase {
         createProject("pistons", new OriginChecksTrait());
 
         MockOriginServer.MockCheckRun checkRun = mockServer.checkRun(OWNER, "pistons", "Jenkins");
-        // The completed report is the only one, so nothing was reported while the job was queued.
-        assertThat(checkRun.reportedStates(), contains("completed/success"));
+        // Only the queued report is ruled out. An in-progress one is legitimate — the checks API sends
+        // it once the build has a revision — so asserting the completed report is the only one would
+        // fail the moment a test Jenkinsfile checked out or used a stage.
+        assertThat(checkRun.reportedStates(), not(hasItem("queued")));
+        assertThat(checkRun.reportedStates(), hasItem("completed/success"));
         assertThat(checkRun.getHeadSha(), is(MAIN_SHA));
     }
 
@@ -115,12 +118,17 @@ class OriginChecksITest extends MockOriginServerTestBase {
     }
 
     /**
-     * Test reports are not this plugin's work: the junit plugin publishes them through the checks API,
-     * which routes them to our publisher. The point of this test is that such a check reaches Origin as
-     * its own check run in the same suite, carrying the failure detail the user would see on GitHub.
+     * A build with a failing test, covering both of the things that follow from it.
+     *
+     * <p>Test reports are not this plugin's work: the junit plugin publishes them through the checks
+     * API, which routes them to our publisher. So the report has to arrive as its own check run in the
+     * same suite, carrying the failure detail the user would see on GitHub.
+     *
+     * <p>The failing test also only makes the build UNSTABLE, and an unstable build has to be reported
+     * as a failure rather than as neutral, or a required check would pass on broken tests.
      */
     @Test
-    void reportsTestResultsAsTheirOwnCheckRun() throws Exception {
+    void reportsTestResultsAsTheirOwnCheckRunAndTheBuildAsAFailure() throws Exception {
         mockServer.addRepo(OWNER, "sprockets", "main").branch("main", MAIN_SHA).file("Jenkinsfile", JUNIT_JENKINSFILE);
 
         WorkflowMultiBranchProject project = createProject("sprockets", new OriginChecksTrait());
@@ -140,24 +148,12 @@ class OriginChecksITest extends MockOriginServerTestBase {
         assertThat(tests.getOutputText(), containsString("expected spin but got wobble"));
         assertThat(tests.getDetailsUrl(), containsString("tests"));
         // Both checks belong to one suite, so Origin groups them under the same build.
-        assertThat(
-                tests.getSuiteKey(),
-                is(mockServer.checkRun(OWNER, "sprockets", "Jenkins").getSuiteKey()));
+        MockOriginServer.MockCheckRun status = mockServer.checkRun(OWNER, "sprockets", "Jenkins");
+        assertThat(tests.getSuiteKey(), is(status.getSuiteKey()));
         assertThat(tests.getSuiteKey(), is(project.getFullName()));
-    }
-
-    /**
-     * Failing tests only make the build UNSTABLE, and an unstable build is reported as a failure rather
-     * than as neutral, so a required check does not pass on a build with broken tests.
-     */
-    @Test
-    void reportsAnUnstableBuildAsAFailure() throws Exception {
-        mockServer.addRepo(OWNER, "flywheels", "main").branch("main", MAIN_SHA).file("Jenkinsfile", JUNIT_JENKINSFILE);
-
-        WorkflowMultiBranchProject project = createProject("flywheels", new OriginChecksTrait());
 
         assertThat(project.getItem("main").getLastBuild().getResult(), is(Result.UNSTABLE));
-        assertThat(mockServer.checkRun(OWNER, "flywheels", "Jenkins").getConclusion(), is("failure"));
+        assertThat(status.getConclusion(), is("failure"));
     }
 
     @Test
