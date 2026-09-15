@@ -435,6 +435,8 @@ public class MockOriginServer implements Closeable {
             String owner = repoMatcher.group(1);
             String repoName = repoMatcher.group(2);
             String rest = repoMatcher.group(3); // e.g. "/branches", "/pulls", "/contents", null
+            Matcher annotationsMatcher = rest == null ? null : ANNOTATIONS_PATH.matcher(rest);
+            boolean isAnnotations = annotationsMatcher != null && annotationsMatcher.matches();
             String requiredScope;
             if (rest == null || rest.equals("/")) {
                 requiredScope = "repository:metadata:read";
@@ -442,8 +444,7 @@ public class MockOriginServer implements Closeable {
                 requiredScope = "repository:contents:read";
             } else if (rest.equals("/pulls") || rest.startsWith("/pulls/")) {
                 requiredScope = "repository:pull_requests:read";
-            } else if (rest.equals("/check-runs")
-                    || ANNOTATIONS_PATH.matcher(rest).matches()) {
+            } else if (rest.equals("/check-runs") || isAnnotations) {
                 // Documented on the check-run upsert; the annotations sub-resource is the same write.
                 requiredScope = "repository:checks:write";
             } else {
@@ -474,10 +475,8 @@ public class MockOriginServer implements Closeable {
                 handleGetContents(he, repo);
             } else if (rest.equals("/check-runs") && "POST".equals(method)) {
                 handlePostCheckRun(he, repo);
-            } else if ("POST".equals(method) && ANNOTATIONS_PATH.matcher(rest).matches()) {
-                Matcher annotationMatcher = ANNOTATIONS_PATH.matcher(rest);
-                annotationMatcher.matches();
-                handleCreateCheckRunAnnotations(he, repo, annotationMatcher.group(1));
+            } else if (isAnnotations && "POST".equals(method)) {
+                handleCreateCheckRunAnnotations(he, repo, annotationsMatcher.group(1));
             } else if (rest.startsWith("/git/ref/")) {
                 handleGetGitRef(he, repo, rest.substring("/git/ref/".length()));
             } else {
