@@ -14,7 +14,10 @@ import org.kohsuke.stapler.DataBoundSetter;
 /**
  * Trait that configures how build status is reported to Cursor Origin as a check run.
  *
- * <p>Checks are published without this trait too; adding it only overrides the defaults.
+ * <p>Checks are published without this trait too, so the trait only overrides the defaults — which
+ * currently means the one thing it can do is stop them being published. The display name is
+ * deliberately neutral rather than promising to report, both because reporting happens either way
+ * and so that further options can be added here without renaming it.
  */
 public class OriginChecksTrait extends SCMSourceTrait implements OriginChecksConfigurations {
 
@@ -39,7 +42,7 @@ public class OriginChecksTrait extends SCMSourceTrait implements OriginChecksCon
 
         @Override
         public String getDisplayName() {
-            return "Report build status to Cursor Origin as a check";
+            return "Cursor Origin checks configuration";
         }
 
         @Override
