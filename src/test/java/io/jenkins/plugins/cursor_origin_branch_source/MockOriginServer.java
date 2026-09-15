@@ -133,6 +133,12 @@ public class MockOriginServer implements Closeable {
      * A check run as reported by the plugin. Cursor Origin upserts on
      * {@code (repository, head SHA, suite key, check key)}, so repeated reports of the same check
      * update the same instance and are recorded in {@link #reportedStates()}.
+     *
+     * <p>That key is documented rather than deduced: see the {@code POST .../check-runs} description
+     * in {@code src/main/openapi/origin-openapi.yaml}, "A repeated call with the same
+     * {@code (repo, head_sha, suite.key, check.key)} updates the existing check run in place rather
+     * than creating a duplicate", which also specifies the {@code externalUpdatedAt} ordering and the
+     * annotation limits enforced below.
      */
     public static class MockCheckRun {
         private final String id;
@@ -861,7 +867,10 @@ public class MockOriginServer implements Closeable {
         });
     }
 
-    /** Cursor Origin matches a repeated report on {@code (head SHA, suite key, check key)}. */
+    /**
+     * Cursor Origin matches a repeated report on {@code (head SHA, suite key, check key)}; the
+     * repository is implicit in the path. Documented on {@code POST .../check-runs} in the spec.
+     */
     private MockCheckRun upsertCheckRun(MockRepo repo, String headSha, String suiteKey, String suiteName, String key) {
         for (MockCheckRun existing : repo.checkRuns) {
             if (existing.headSha.equals(headSha) && existing.suiteKey.equals(suiteKey) && existing.key.equals(key)) {

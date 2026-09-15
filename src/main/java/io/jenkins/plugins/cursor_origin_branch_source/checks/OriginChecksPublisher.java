@@ -123,7 +123,8 @@ class OriginChecksPublisher extends ChecksPublisher {
                 .key(details.getName())
                 .name(details.getName())
                 .status(details.getStatus())
-                // Orders concurrent updates, so that a stale retry cannot overwrite newer state.
+                // Stamped once per request, so a transport retry of this request carries the original
+                // value and cannot overwrite newer state. Origin orders updates to one run identity on it.
                 .externalUpdatedAt(now)
                 .externalId(context.getExternalId())
                 .detailsUrl(details.getDetailsUrl().orElseGet(context::getUrl));
