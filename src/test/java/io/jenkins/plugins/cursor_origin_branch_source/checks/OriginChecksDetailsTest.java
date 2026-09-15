@@ -335,7 +335,7 @@ class OriginChecksDetailsTest {
                 .withName("check")
                 .withOutput(new ChecksOutput.ChecksOutputBuilder()
                         .withSummary("summary")
-                        .withAnnotations(java.util.List.of(annotation))
+                        .withAnnotations(List.of(annotation))
                         .build())
                 .build());
     }
