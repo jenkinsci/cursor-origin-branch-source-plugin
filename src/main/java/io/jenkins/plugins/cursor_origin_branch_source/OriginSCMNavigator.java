@@ -99,7 +99,7 @@ public class OriginSCMNavigator extends SCMNavigator {
         }
 
         TaskListener listener = observer.getListener();
-        OriginServiceApi api = OriginAppCredentials.apiWithToken(creds.mintToken());
+        OriginServiceApi api = creds.api();
         Pattern namePattern = Pattern.compile(pattern);
 
         List<SCMSourceTrait> sourceTraits = new ArrayList<>();

@@ -177,7 +177,7 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
     }
 
     /** Mints a fresh installation access token by exchanging a JWT on the controller. */
-    String mintToken() {
+    private String mintToken() {
         // TODO: introduce token caching (see GitHubAppCredentials) if needed
         JenkinsJVM.checkJenkinsJVM();
         return doMintToken(appId, installationId, privateKey.getPlainText(), null, "controller");
@@ -200,7 +200,7 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
         return new OriginServiceApi(client);
     }
 
-    static String doMintToken(
+    private static String doMintToken(
             String appId,
             String installationId,
             String plainPrivateKey,
