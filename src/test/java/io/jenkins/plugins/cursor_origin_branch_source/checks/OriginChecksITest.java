@@ -43,10 +43,12 @@ class OriginChecksITest extends MockOriginServerTestBase {
             </testsuite>
             """;
 
-    private static final String JUNIT_JENKINSFILE = "node {\n"
-            + "  writeFile file: 'results.xml', text: '''" + JUNIT_REPORT + "'''\n"
-            + "  junit 'results.xml'\n"
-            + "}\n";
+    private static final String JUNIT_JENKINSFILE = """
+            node {
+              writeFile file: 'results.xml', text: '''%s'''
+              junit 'results.xml'
+            }
+            """.formatted(JUNIT_REPORT);
 
     /** A successful build reports the whole lifecycle of one check against the branch head. */
     @Test
