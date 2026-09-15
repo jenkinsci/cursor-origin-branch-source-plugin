@@ -65,6 +65,6 @@ class OriginSCMFacade {
             return Optional.empty();
         }
         return Optional.ofNullable(CredentialsProvider.findCredentialByIdInItem(
-                credentialsId, OriginAppCredentials.class, job, ACL.SYSTEM2, Collections.emptyList()));
+                credentialsId, OriginAppCredentials.class, job, null, null));
     }
 }
