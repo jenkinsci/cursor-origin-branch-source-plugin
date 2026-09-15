@@ -5,6 +5,7 @@ import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import hudson.model.Job;
 import hudson.model.Run;
+import hudson.security.ACL;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginAppCredentials;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginPullRequestSCMRevision;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginSCMSource;
@@ -63,6 +64,6 @@ class OriginSCMFacade {
             return Optional.empty();
         }
         return Optional.ofNullable(CredentialsProvider.findCredentialByIdInItem(
-                credentialsId, OriginAppCredentials.class, job, null, null));
+                credentialsId, OriginAppCredentials.class, job, ACL.SYSTEM2, null));
     }
 }
