@@ -137,8 +137,8 @@ public class OriginSCMSource extends AbstractGitSCMSource {
 
             List<PullRequest> openPRs = Collections.emptyList();
             if (request.isFetchPRs()) {
-                ListPullRequestsResponse prResp =
-                        api.originServiceListPullRequests(repoOwner, repository, null, "open", null, null);
+                ListPullRequestsResponse prResp = api.originServiceListPullRequests(
+                        repoOwner, repository, null, "open", null, null, null, null, null, null, null, null);
                 openPRs = prResp.getPullRequests();
                 Set<String> prHeadBranches = new HashSet<>();
                 for (PullRequest pr : openPRs) {
@@ -241,8 +241,8 @@ public class OriginSCMSource extends AbstractGitSCMSource {
         OriginServiceApi api = creds.api();
         try {
             if (head instanceof OriginPullRequestSCMHead prHead) {
-                ListPullRequestsResponse resp =
-                        api.originServiceListPullRequests(repoOwner, repository, null, "open", null, null);
+                ListPullRequestsResponse resp = api.originServiceListPullRequests(
+                        repoOwner, repository, null, "open", null, null, null, null, null, null, null, null);
                 for (PullRequest pr : resp.getPullRequests()) {
                     if (prHead.getNumber().equals(pr.getNumber())) {
                         return new OriginPullRequestSCMRevision(
