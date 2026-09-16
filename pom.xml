@@ -169,6 +169,8 @@
                    does not declare required fields on response schemas, so every getter would
                    otherwise be @CheckForNull, flooding SpotBugs with false positives. -->
               <templateDirectory>${project.basedir}/src/main/openapi/templates</templateDirectory>
+              <!-- Rename Thread → CommentThread to avoid shadowing java.lang.Thread -->
+              <modelNameMappings>Thread=CommentThread,ThreadReference=CommentThreadReference</modelNameMappings>
               <configOptions>
                 <sourceFolder>.</sourceFolder>
                 <useJackson3>true</useJackson3>
