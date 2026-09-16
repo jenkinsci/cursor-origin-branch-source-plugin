@@ -43,7 +43,7 @@ public abstract class MockOriginServerTestBase {
     protected MockOriginServer mockServer;
 
     @AutoClose
-    MockGitServer mockGitServer;
+    protected MockGitServer mockGitServer;
 
     protected KeyPair appKeyPair;
 

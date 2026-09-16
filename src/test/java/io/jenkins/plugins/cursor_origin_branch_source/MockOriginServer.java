@@ -242,9 +242,9 @@ public class MockOriginServer implements Closeable {
     }
 
     public static class MockRepo {
-        final String owner;
+        public final String owner;
         final String name;
-        final String id;
+        public final String id;
         final String defaultBranch;
         final List<MockBranch> branches = new ArrayList<>();
         final List<MockPR> pullRequests = new ArrayList<>();

@@ -1,23 +1,25 @@
 package io.jenkins.plugins.cursor_origin_branch_source.checks;
 
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.not;
-import static org.hamcrest.Matchers.notNullValue;
 
 import hudson.model.Result;
 import io.jenkins.plugins.cursor_origin_branch_source.BranchDiscoveryTrait;
 import io.jenkins.plugins.cursor_origin_branch_source.MockOriginServer;
+import io.jenkins.plugins.cursor_origin_branch_source.MockOriginServer.MockRepo;
 import io.jenkins.plugins.cursor_origin_branch_source.MockOriginServerTestBase;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginSCMSource;
 import io.jenkins.plugins.cursor_origin_branch_source.PullRequestDiscoveryTrait;
 import java.util.List;
+import java.util.Map;
 import jenkins.branch.BranchSource;
 import jenkins.scm.api.trait.SCMSourceTrait;
+import org.jenkinsci.plugins.workflow.job.WorkflowRun;
 import org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject;
 import org.junit.jupiter.api.Test;
 
@@ -69,13 +71,14 @@ class OriginChecksITest extends MockOriginServerTestBase {
                 is(project.getItem("main").getLastBuild().getExternalizableId()));
         assertThat(
                 checkRun.getDetailsUrl(), containsString(project.getItem("main").getUrl()));
-        assertThat(checkRun.getOutputTitle(), is(notNullValue()));
+        assertThat(checkRun.getOutputTitle(), is("Success"));
     }
 
     /**
      * Nothing is reported before the build exists. The checks API offers to report a job as queued, but
      * the commit to report against is only known once the build has recorded it, so taking that offer
      * would mean guessing a branch head and possibly reporting against a commit that is never built.
+     * As this pipeline does not have any checkout scm or other check there can only be a completed status.
      */
     @Test
     void reportsNothingUntilTheBuildKnowsItsCommit() throws Exception {
@@ -84,12 +87,41 @@ class OriginChecksITest extends MockOriginServerTestBase {
         createProject("pistons", new OriginChecksTrait());
 
         MockOriginServer.MockCheckRun checkRun = mockServer.checkRun(OWNER, "pistons", "Jenkins");
-        // Only the queued report is ruled out. An in-progress one is legitimate — the checks API sends
-        // it once the build has a revision — so asserting the completed report is the only one would
-        // fail the moment a test Jenkinsfile checked out or used a stage.
-        assertThat(checkRun.reportedStates(), not(hasItem("queued")));
-        assertThat(checkRun.reportedStates(), hasItem("completed/success"));
+        // As there this is a lightweight checkout and there is no checkout scm step there there is no check that knows
+        // a revision
+        // until the final check.
+        assertThat(checkRun.reportedStates(), contains(is("completed/success")));
         assertThat(checkRun.getHeadSha(), is(MAIN_SHA));
+    }
+
+    /**
+     * Nothing is reported before the build exists. The checks API offers to report a job as queued, but
+     * the commit to report against is only known once the build has recorded it, so taking that offer
+     * would mean guessing a branch head and possibly reporting against a commit that is never built.
+     */
+    @Test
+    void reportsPendingWhenTheBuildKnowsItsCommit() throws Exception {
+        String jf = """
+                 node {
+                  // checking out here forces the SCMListener which will report an in progress
+                  checkout scm
+                  echo 'hello'
+                }
+                """;
+        MockRepo repo = mockServer.addRepo(OWNER, "pistons", "main");
+        String sha = mockGitServer.addRepo(OWNER, "pistons", repo.id, "main", Map.of("Jenkinsfile", jf));
+        repo.branch("main", sha).file("Jenkinsfile", jf);
+
+        WorkflowMultiBranchProject project = createProject("pistons", new OriginChecksTrait());
+        WorkflowRun build = project.getBranch("main").getBuildByNumber(1);
+        r.assertBuildStatusSuccess(build);
+
+        MockOriginServer.MockCheckRun checkRun = mockServer.checkRun(OWNER, "pistons", "Jenkins");
+        // Only the queued report is ruled out. An in-progress one is legitimate — the checks API sends
+        // it once the build has a revision which is handled as the checkout scm — so asserting the completed
+        // report is the only one would fail the moment a test Jenkinsfile checked out or used a stage.
+        assertThat(checkRun.reportedStates(), contains(is("in_progress"), is("completed/success")));
+        assertThat(checkRun.getHeadSha(), is(sha));
     }
 
     /** A pull request has to be reported against its head commit, not the target branch. */
