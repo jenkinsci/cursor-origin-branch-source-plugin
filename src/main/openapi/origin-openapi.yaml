@@ -759,7 +759,7 @@ paths:
                 tokenTypes:
                     - user
                 scopes:
-                    - app:settings:read
+                    - namespace:apps:read
         patch:
             tags:
                 - OriginService
@@ -1084,7 +1084,16 @@ paths:
                   in: query
                   description: |-
                     Opaque cursor from a previous response's `next_page_token`. Empty for the
-                     first page.
+                     first page. The same filter must be used when requesting subsequent pages.
+                  schema:
+                    type: string
+                - name: filter
+                  in: query
+                  description: |-
+                    Optional case-insensitive substring filter applied to repository names and
+                     owner namespaces. A single-slash `owner/repo` value matches each half
+                     against its corresponding field. Leading and trailing whitespace is
+                     ignored; an empty value applies no filter.
                   schema:
                     type: string
             responses:
@@ -1658,7 +1667,6 @@ paths:
                                     description: |-
                                         `PERMISSION_READ`, `PERMISSION_CONTRIBUTOR`, `PERMISSION_WRITE`, or
                                          `PERMISSION_ADMIN`.
-                                    format: enum
                         examples:
                             upsertNamespaceGrant:
                                 value:
@@ -2196,7 +2204,6 @@ paths:
                                     description: |-
                                         New repository visibility, `internal` or `private`. Unspecified leaves
                                          the visibility unchanged.
-                                    format: enum
                         examples:
                             updateRepo:
                                 value:
@@ -5569,7 +5576,6 @@ paths:
                                         - custom
                                     type: string
                                     description: '`read`, `write`, or `admin`.'
-                                    format: enum
                         examples:
                             upsertRepositoryGrant:
                                 value:
@@ -6594,7 +6600,6 @@ paths:
                                         - outbound_to_inbound
                                     type: string
                                     description: The mirror-state change to start.
-                                    format: enum
                         examples:
                             transitionRepoMirror:
                                 value:
@@ -8620,7 +8625,6 @@ paths:
                                          the repository does not allow fails with FAILED_PRECONDITION. Omit to use
                                          the repository's default: a merge commit when allowed, otherwise squash;
                                          squash when the base branch requires linear history.
-                                    format: enum
                         examples:
                             mergePullRequest:
                                 value:
@@ -9371,7 +9375,6 @@ paths:
                                         - comment
                                     type: string
                                     description: The review decision.
-                                    format: enum
                                 body:
                                     type: string
                                     description: Free-text review summary. May be empty.
@@ -9869,7 +9872,6 @@ paths:
                                         - evaluate
                                         - disabled
                                     type: string
-                                    format: enum
                                 kind:
                                     enum:
                                         - merge_branch
@@ -9877,7 +9879,6 @@ paths:
                                         - push_tag
                                         - push_repository
                                     type: string
-                                    format: enum
                                 includedRefNames:
                                     type: array
                                     items:
@@ -10128,7 +10129,6 @@ paths:
                                         - evaluate
                                         - disabled
                                     type: string
-                                    format: enum
                                 kind:
                                     enum:
                                         - merge_branch
@@ -10136,7 +10136,6 @@ paths:
                                         - push_tag
                                         - push_repository
                                     type: string
-                                    format: enum
                                 includedRefNames:
                                     type: array
                                     items:
@@ -10328,8 +10327,10 @@ paths:
                  REST: the first request for a given repository and resolved commit
                  streams `application/gzip` bytes. Later requests for the same commit
                  respond 302 with a short-lived signed download URL in `Location`.
-                 Archive entries are at the root of the tar (no wrapping directory).
-                 Empty repositories return 409 Conflict.
+                 The archive contains a single top-level directory named
+                 `{owner_slug}-{name}-{short_sha}/`, where `short_sha` is the first 7 hex
+                 characters of the resolved commit — the same layout as GitHub's tarball
+                 endpoint. Empty repositories return 409 Conflict.
             operationId: OriginService_GetRepoTarball
             parameters:
                 - name: ownerSlug
@@ -10425,8 +10426,10 @@ paths:
                  REST: the first request for a given repository and resolved commit
                  streams `application/gzip` bytes. Later requests for the same commit
                  respond 302 with a short-lived signed download URL in `Location`.
-                 Archive entries are at the root of the tar (no wrapping directory).
-                 Empty repositories return 409 Conflict.
+                 The archive contains a single top-level directory named
+                 `{owner_slug}-{name}-{short_sha}/`, where `short_sha` is the first 7 hex
+                 characters of the resolved commit — the same layout as GitHub's tarball
+                 endpoint. Empty repositories return 409 Conflict.
             operationId: OriginService_GetRepoTarball_2
             parameters:
                 - name: ownerSlug
@@ -10997,7 +11000,6 @@ components:
                         - selected
                     type: string
                     description: Whether the app can access all repos belonging to the owner, or only selected repos.
-                    format: enum
                 scopes:
                     readOnly: true
                     type: array
@@ -11141,7 +11143,6 @@ components:
                          `already_in_flight` (a send was already running; success, not an error),
                          or `not_found`. `not_found` covers unknown ids, ids older than the 7-day
                          retention window, and namespaces where the app is no longer installed.
-                    format: enum
             description: The outcome for one requested delivery id.
         BatchUpsertCheckRunsRequest:
             required:
@@ -11265,7 +11266,6 @@ components:
                          (render like `queued`), with `conclusion` and the timings still
                          describing the superseded attempt. Set only by Origin on re-request
                          (RerequestCheckRun); apps cannot post it.
-                    format: enum
                 conclusion:
                     readOnly: true
                     enum:
@@ -11282,7 +11282,6 @@ components:
                         Present iff `status` is `completed` or `rerequested`. For a
                          `rerequested` run it is the superseded attempt's verdict: treat the run
                          as pending and read `conclusion` only when `status == completed`.
-                    format: enum
                 detailsUrl:
                     readOnly: true
                     type: string
@@ -11376,7 +11375,6 @@ components:
                         - warning
                         - failure
                     type: string
-                    format: enum
                 message:
                     readOnly: true
                     type: string
@@ -11421,7 +11419,6 @@ components:
                         - warning
                         - failure
                     type: string
-                    format: enum
                 message:
                     type: string
                     description: 'Non-empty annotation message. Maximum UTF-8 size: 65535 bytes.'
@@ -11488,7 +11485,6 @@ components:
                         Settable values: `queued`, `in_progress` or `completed`. `rerequested` is
                          read-only — set only by Origin on re-request — and a post carrying it is
                          rejected with INVALID_ARGUMENT.
-                    format: enum
                 conclusion:
                     enum:
                         - success
@@ -11501,7 +11497,6 @@ components:
                         - stale
                     type: string
                     description: Required iff `status == completed`.
-                    format: enum
                 externalUpdatedAt:
                     type: string
                     description: |-
@@ -11896,7 +11891,6 @@ components:
                         - right
                     type: string
                     description: Diff side of the anchor. Unset for general-discussion threads.
-                    format: enum
                 startLine:
                     readOnly: true
                     type: integer
@@ -11981,7 +11975,6 @@ components:
                         - behind
                         - diverged
                     type: string
-                    format: enum
                 aheadBy:
                     type: integer
                     description: Commits `head` is ahead of the merge base.
@@ -12454,7 +12447,6 @@ components:
                         - comment
                     type: string
                     description: The review decision.
-                    format: enum
                 body:
                     type: string
                     description: Free-text review summary. May be empty.
@@ -12508,7 +12500,6 @@ components:
                         - evaluate
                         - disabled
                     type: string
-                    format: enum
                 kind:
                     enum:
                         - merge_branch
@@ -12516,7 +12507,6 @@ components:
                         - push_tag
                         - push_repository
                     type: string
-                    format: enum
                 includedRefNames:
                     type: array
                     items:
@@ -13084,7 +13074,6 @@ components:
                         - context
                     type: string
                     description: Whether this line carries matches or was returned as context.
-                    format: enum
                 submatches:
                     type: array
                     items:
@@ -13229,7 +13218,6 @@ components:
                     description: |-
                         Diff side of the anchor: `left` for the base version of the file,
                          `right` for the head version.
-                    format: enum
                 startLine:
                     type: integer
                     description: |-
@@ -13507,7 +13495,14 @@ components:
                     type: string
                     description: |-
                         Opaque cursor from a previous response's `next_page_token`. Empty for the
-                         first page.
+                         first page. The same filter must be used when requesting subsequent pages.
+                filter:
+                    type: string
+                    description: |-
+                        Optional case-insensitive substring filter applied to repository names and
+                         owner namespaces. A single-slash `owner/repo` value matches each half
+                         against its corresponding field. Leading and trailing whitespace is
+                         ignored; an empty value applies no filter.
         ListAppInstallationRepositoriesResponse:
             type: object
             properties:
@@ -13525,7 +13520,6 @@ components:
                         - selected
                     type: string
                     description: Whether the authenticated installation can access all repos belonging to an owner, or only selected repos.
-                    format: enum
         ListAppInstallationsRequest:
             type: object
             properties:
@@ -14407,7 +14401,6 @@ components:
                          the repository does not allow fails with FAILED_PRECONDITION. Omit to use
                          the repository's default: a merge commit when allowed, otherwise squash;
                          squash when the base branch requires linear history.
-                    format: enum
         MergePullRequestResponse:
             type: object
             properties:
@@ -14443,7 +14436,6 @@ components:
                         - outbound_to_inbound
                     type: string
                     description: The mirror-direction change this job performs.
-                    format: enum
                 status:
                     readOnly: true
                     enum:
@@ -14458,7 +14450,6 @@ components:
                         Lifecycle state. `succeeded`, `failed_rolled_back`, and `superseded` are
                          terminal; `requires_attention` needs operator intervention or a forced
                          cutover.
-                    format: enum
                 phase:
                     readOnly: true
                     type: string
@@ -14537,7 +14528,6 @@ components:
                         - PERMISSION_CUSTOM
                     type: string
                     description: Permission the principal holds on every repository under the owner.
-                    format: enum
             description: |-
                 One grant of access to an owner: the principal that holds it and the
                  permission it confers on every repository under that owner. The principal is
@@ -14585,7 +14575,6 @@ components:
                         - members
                         - admins
                     type: string
-                    format: enum
             description: |-
                 A fixed group of the team that owns a repository or an owner: every team
                  member or every team admin. These are the owning team's default access
@@ -14631,7 +14620,6 @@ components:
                         - user
                     type: string
                     description: '`team` or `user`. Output-only; unset when unknown.'
-                    format: enum
             description: The owner of a repo.
         PingWebhookRequest:
             type: object
@@ -14891,7 +14879,6 @@ components:
                          `mergeable` means merging `pull_request` lands all of them (for a stacked
                          pull request, the whole stack below it as well). Unrecognized values must
                          be treated as `blocked`.
-                    format: enum
                     x-cursor-visibility: PREVIEW
                 blockers:
                     type: array
@@ -14976,7 +14963,6 @@ components:
                     description: |-
                         Category of the blocker. Never unset on the wire; a client that decodes
                          it unset received a kind newer than itself (see `blockers`).
-                    format: enum
                     x-cursor-visibility: PREVIEW
                 message:
                     type: string
@@ -15053,7 +15039,6 @@ components:
                         - request_changes
                         - comment
                     type: string
-                    format: enum
                 body:
                     type: string
                     description: Free-text review summary. Empty when the reviewer left no summary.
@@ -15151,7 +15136,6 @@ components:
                         - codeowners
                     type: string
                     description: How the review request was created.
-                    format: enum
                 createdBy:
                     allOf:
                         - $ref: '#/components/schemas/OriginActor'
@@ -15485,7 +15469,6 @@ components:
                         - private
                     type: string
                     description: Repository visibility, `internal` or `private`.
-                    format: enum
                 allowMergeCommit:
                     readOnly: true
                     type: boolean
@@ -15574,7 +15557,6 @@ components:
                         - admin
                         - custom
                     type: string
-                    format: enum
             description: |-
                 A permission granted directly on a repository to one user, group, or
                  owning-team group.
@@ -15612,7 +15594,6 @@ components:
                     enum:
                         - github
                     type: string
-                    format: enum
                 sourceId:
                     readOnly: true
                     type: string
@@ -15624,7 +15605,6 @@ components:
                         - outbound
                     type: string
                     description: Effective direction during a transition, until cutover completes.
-                    format: enum
             description: The external source and lifecycle state of a mirrored repository.
         RepositoryPushCommit:
             type: object
@@ -15829,7 +15809,6 @@ components:
                         - action_required
                     type: string
                     description: State shared by every check in this blocker.
-                    format: enum
                     x-cursor-visibility: PREVIEW
                 checks:
                     type: array
@@ -15908,7 +15887,6 @@ components:
                         - evaluate
                         - disabled
                     type: string
-                    format: enum
                 kind:
                     enum:
                         - merge_branch
@@ -15916,7 +15894,6 @@ components:
                         - push_tag
                         - push_repository
                     type: string
-                    format: enum
                 includedRefNames:
                     type: array
                     items:
@@ -15970,7 +15947,6 @@ components:
                         - always
                         - pull_request_only
                     type: string
-                    format: enum
                 user:
                     $ref: '#/components/schemas/RulesetUserBypassActor'
                 team:
@@ -15993,7 +15969,6 @@ components:
                         - always
                         - pull_request_only
                     type: string
-                    format: enum
                 user:
                     $ref: '#/components/schemas/RulesetUserBypassActor'
                 team:
@@ -16014,7 +15989,6 @@ components:
                         - repository_admin
                         - repository_write
                     type: string
-                    format: enum
             description: |-
                 Bypass granted to holders of a policy-backed Origin role. Payload role is
                  one of `namespace_admin`, `repository_admin`, or `repository_write`.
@@ -16104,7 +16078,6 @@ components:
                         - cross_repository_parent
                         - base_branch_missing
                     type: string
-                    format: enum
                     x-cursor-visibility: PREVIEW
                 relatedPullRequests:
                     type: array
@@ -16193,7 +16166,6 @@ components:
                         - outbound_to_inbound
                     type: string
                     description: The mirror-state change to start.
-                    format: enum
         TransitionRepoMirrorResponse:
             type: object
             properties:
@@ -16393,7 +16365,6 @@ components:
                     description: |-
                         New repository visibility, `internal` or `private`. Unspecified leaves
                          the visibility unchanged.
-                    format: enum
         UpdateRulesetRequest:
             required:
                 - identifier
@@ -16418,7 +16389,6 @@ components:
                         - evaluate
                         - disabled
                     type: string
-                    format: enum
                 kind:
                     enum:
                         - merge_branch
@@ -16426,7 +16396,6 @@ components:
                         - push_tag
                         - push_repository
                     type: string
-                    format: enum
                 includedRefNames:
                     type: array
                     items:
@@ -16478,7 +16447,6 @@ components:
                     description: |-
                         `PERMISSION_READ`, `PERMISSION_CONTRIBUTOR`, `PERMISSION_WRITE`, or
                          `PERMISSION_ADMIN`.
-                    format: enum
         UpsertRepositoryGrantRequest:
             required:
                 - identifier
@@ -16501,7 +16469,6 @@ components:
                         - custom
                     type: string
                     description: '`read`, `write`, or `admin`.'
-                    format: enum
         WebhookApp:
             type: object
             properties:
@@ -16567,7 +16534,6 @@ components:
                         - automatic
                         - manual
                     type: string
-                    format: enum
                 responseStatusCode:
                     readOnly: true
                     type: integer
@@ -16612,7 +16578,6 @@ components:
                         - all
                         - selected
                     type: string
-                    format: enum
                 repositories:
                     type: array
                     items:
