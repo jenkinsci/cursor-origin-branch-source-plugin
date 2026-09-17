@@ -113,7 +113,7 @@ public class OriginSCMNavigator extends SCMNavigator {
             String pageToken = null;
             do {
                 ListAppInstallationRepositoriesResponse resp =
-                        api.originServiceListAppInstallationRepositories(null, pageToken);
+                        api.originServiceListAppInstallationRepositories(null, pageToken, null);
                 for (Repo repo : resp.getRepositories()) {
                     String ownerSlug = repo.getOwner() != null ? repo.getOwner().getSlug() : null;
                     if (!repoOwner.equals(ownerSlug)) {
