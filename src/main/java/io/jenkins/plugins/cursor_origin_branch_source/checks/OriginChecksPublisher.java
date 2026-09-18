@@ -127,9 +127,9 @@ class OriginChecksPublisher extends ChecksPublisher {
                 // value and cannot overwrite newer state. Origin orders updates to one run identity on it.
                 .externalUpdatedAt(now)
                 .externalId(context.getExternalId())
-                .detailsUrl(details.getDetailsUrl().orElseGet(context::getUrl));
+                .detailsUrl(details.getDetailsUrl().orElseGet(context::getUrl))
+                .isRerequestable(Boolean.TRUE);
 
-        run.isRerequestable(true);
         details.getStartedAt().ifPresent(run::startedAt);
         details.getOutput().ifPresent(run::output);
         details.getConclusion()
