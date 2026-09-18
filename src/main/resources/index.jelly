@@ -2,4 +2,5 @@
 <?jelly escape-by-default='true'?>
 <div>
     Multibranch projects and namespace folders from <a href="https://cursor.com/origin?utm_source=jenkins-plugin">Cursor Origin</a>.
+    Origin is currently in <b>early beta</b>, so plugin features may break after service changes.
 </div>

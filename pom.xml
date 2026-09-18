@@ -11,10 +11,10 @@
 
   <groupId>io.jenkins.plugins</groupId>
   <artifactId>cursor-origin-branch-source</artifactId>
-  <version>${changelist}</version>
+  <version>0.${changelist}</version>
   <packaging>hpi</packaging>
 
-  <name>Cursor Origin Branch Source Plugin</name>
+  <name>Cursor Origin Branch Source Plugin (beta)</name>
   <url>https://github.com/jenkinsci/${project.artifactId}-plugin</url>
   <licenses>
     <license>
