@@ -17,8 +17,11 @@ import io.jenkins.plugins.cursor_origin_branch_source.OriginSCMSource;
 import io.jenkins.plugins.cursor_origin_branch_source.PullRequestDiscoveryTrait;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import jenkins.branch.BranchSource;
 import jenkins.scm.api.trait.SCMSourceTrait;
+import org.awaitility.Awaitility;
+import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
 import org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject;
 import org.junit.jupiter.api.Test;
@@ -199,6 +202,46 @@ class OriginChecksITest extends MockOriginServerTestBase {
         createProject("cogs", trait);
 
         assertThat(mockServer.checkRuns(OWNER, "cogs"), is(empty()));
+    }
+
+    /**
+     * When a user clicks "Re-run" on a check run in Origin, a
+     * {@code repository.check_run.rerequested} webhook is fired. The plugin must schedule a new
+     * build for the same job.
+     */
+    @Test
+    void rebuildsWhenCheckRunIsRerequested() throws Exception {
+        String webhookUrl = r.getURL().toExternalForm() + "cursor-origin-webhook/";
+        mockServer.addRepo(OWNER, "retries", "main").branch("main", MAIN_SHA).file("Jenkinsfile", JENKINSFILE);
+        WorkflowMultiBranchProject project = createProject("retries", new OriginChecksTrait());
+
+        WorkflowJob mainJob = project.getItem("main");
+        assertThat(mainJob.getLastBuild().getNumber(), is(1));
+
+        String externalId = mockServer.checkRun(OWNER, "retries", "Jenkins").getExternalId();
+
+        mockServer.deliverWebhook(webhookUrl, APP_ID, INSTALLATION_ID, "repository.check_run.rerequested", gen -> {
+            gen.writeStartObject();
+            gen.writeObjectFieldStart("repository");
+            gen.writeObjectFieldStart("owner");
+            gen.writeStringField("slug", OWNER);
+            gen.writeEndObject();
+            gen.writeStringField("name", "retries");
+            gen.writeEndObject();
+            gen.writeObjectFieldStart("checkSuite");
+            gen.writeStringField("key", project.getFullName());
+            gen.writeEndObject();
+            gen.writeObjectFieldStart("checkRun");
+            gen.writeStringField("sha", MAIN_SHA);
+            gen.writeStringField("key", "Jenkins");
+            gen.writeStringField("externalId", externalId);
+            gen.writeStringField("status", "rerequested");
+            gen.writeEndObject();
+            gen.writeEndObject();
+        });
+
+        Awaitility.await().atMost(30, TimeUnit.SECONDS).until(() -> mainJob.getLastBuild().getNumber() == 2);
+        r.waitUntilNoActivity();
     }
 
     /** Builds a multibranch project, indexes it and waits for the branch builds to finish. */

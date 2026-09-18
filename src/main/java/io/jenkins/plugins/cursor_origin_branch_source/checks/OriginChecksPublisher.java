@@ -129,6 +129,7 @@ class OriginChecksPublisher extends ChecksPublisher {
                 .externalId(context.getExternalId())
                 .detailsUrl(details.getDetailsUrl().orElseGet(context::getUrl));
 
+        run.isRerequestable(true);
         details.getStartedAt().ifPresent(run::startedAt);
         details.getOutput().ifPresent(run::output);
         details.getConclusion()
