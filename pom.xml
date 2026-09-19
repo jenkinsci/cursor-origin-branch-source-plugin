@@ -42,6 +42,7 @@
     <hpi.strictBundledArtifacts>true</hpi.strictBundledArtifacts>
     <hpi.bundledArtifacts>jackson-databind-nullable</hpi.bundledArtifacts>
     <banObsoleteDependencyOverrides.skip>false</banObsoleteDependencyOverrides.skip>
+    <useBeta>true</useBeta>
   </properties>
 
   <dependencyManagement>
@@ -52,6 +53,11 @@
         <version>6931.vea_a_b_c6fd017d</version>
         <type>pom</type>
         <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.jenkins-ci.plugins</groupId>
+        <artifactId>git</artifactId>
+        <version>5.10.2-rc5585.581c5c1290d0</version>
       </dependency>
     </dependencies>
   </dependencyManagement>
