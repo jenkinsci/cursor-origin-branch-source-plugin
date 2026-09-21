@@ -1,0 +1,22 @@
+= Cursor Origin Branch Source Plugin
+
+image:https://img.shields.io/jenkins/plugin/v/cursor-origin-branch-source[Jenkins Plugin]
+image:https://img.shields.io/github/v/tag/jenkinsci/cursor-origin-branch-source-plugin?label=changelog[Changelog, link="https://github.com/jenkinsci/cursor-origin-branch-source-plugin/releases"]
+image:https://img.shields.io/jenkins/plugin/i/cursor-origin-branch-source?color=blue[Jenkins Plugin Installs, link="https://plugins.jenkins.io/cursor-origin-branch-source"]
+image:https://img.shields.io/github/contributors/jenkinsci/cursor-origin-branch-source-plugin.svg[Contributors, link="https://github.com/jenkinsci/cursor-origin-branch-source-plugin/contributors"]
+
+== Introduction
+
+The Cursor Origin Branch Source plugin allows you to create a new project based on the repository structure from one or more Cursor origin users or namespaces.
+
+== Getting started
+
+TODO, the plugin is currently a skelleton and is work in progress.
+
+== Contributing
+
+Refer to our https://github.com/jenkinsci/.github/blob/master/CONTRIBUTING.md[contribution guidelines]
+
+== LICENSE
+
+Licensed under MIT, see link:LICENSE.md[LICENSE]
