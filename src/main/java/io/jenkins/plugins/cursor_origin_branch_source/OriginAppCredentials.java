@@ -15,6 +15,7 @@ import hudson.model.Run;
 import hudson.plugins.git.GitSCM;
 import hudson.plugins.git.UserRemoteConfig;
 import hudson.remoting.Channel;
+import hudson.util.ListBoxModel;
 import hudson.util.Secret;
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.ApiClient;
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.ApiException;
@@ -42,6 +43,8 @@ import org.jenkinsci.plugins.workflow.multibranch.SCMVar;
 import org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
+import org.kohsuke.stapler.QueryParameter;
+import org.kohsuke.stapler.verb.POST;
 
 public class OriginAppCredentials extends BaseStandardCredentials implements StandardUsernamePasswordCredentials {
 
@@ -200,6 +203,22 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
         return new OriginServiceApi(client);
     }
 
+    static String mintAppJwt(String appId, String plainPrivateKey) {
+        PrivateKey key = parseEd25519Key(plainPrivateKey);
+        Instant now = Instant.now();
+        return Jwts.builder()
+                .header()
+                .add("kid", appId)
+                .add("typ", "JWT")
+                .and()
+                .issuer(appId)
+                .claim("aud", "origin-apps")
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plusSeconds(300)))
+                .signWith(key, Jwts.SIG.EdDSA)
+                .compact();
+    }
+
     private static String doMintToken(
             String appId,
             String installationId,
@@ -207,19 +226,7 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
             @CheckForNull Repo repo,
             String callerContext) {
         try {
-            PrivateKey key = parseEd25519Key(plainPrivateKey);
-            Instant now = Instant.now();
-            String jwt = Jwts.builder()
-                    .header()
-                    .add("kid", appId)
-                    .add("typ", "JWT")
-                    .and()
-                    .issuer(appId)
-                    .claim("aud", "origin-apps")
-                    .issuedAt(Date.from(now))
-                    .expiration(Date.from(now.plusSeconds(300)))
-                    .signWith(key, Jwts.SIG.EdDSA)
-                    .compact();
+            String jwt = mintAppJwt(appId, plainPrivateKey);
             var req = new OriginServiceCreateInstallationAccessTokenRequest();
             if (repo != null) {
                 var id = apiWithToken(doMintToken(appId, installationId, plainPrivateKey, null, callerContext))
@@ -372,6 +379,32 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
 
         // could override getIconClassName but Ionicons will not have the Cursor icon
 
-        // TODO: add doTestConnection; also form validation on syntax on all three fields
+        @SuppressWarnings("lgtm[jenkins/no-permission-check]")
+        @POST
+        public ListBoxModel doFillInstallationIdItems(@QueryParameter String appId, @QueryParameter Secret privateKey) {
+            var items = new ListBoxModel();
+            if (appId.isBlank() || privateKey.getPlainText().isBlank()) {
+                items.add("(enter App ID and Key first)", "");
+                return items;
+            }
+            try {
+                String jwt = mintAppJwt(appId, privateKey.getPlainText());
+                String pageToken = null;
+                do {
+                    var response = apiWithToken(jwt).originServiceListAppInstallations(100, pageToken);
+                    for (var inst : response.getInstallations()) {
+                        String slug =
+                                inst.getTarget() != null ? inst.getTarget().getSlug() : inst.getId();
+                        items.add(slug + " (" + inst.getId() + ")", inst.getId());
+                    }
+                    pageToken = response.getNextPageToken();
+                } while (pageToken != null && !pageToken.isBlank());
+            } catch (Exception e) {
+                items.add("Error fetching installations: " + e.getMessage(), "");
+            }
+            return items;
+        }
+
+        // TODO: add doTestConnection; also form validation on syntax on appId and privateKey
     }
 }
