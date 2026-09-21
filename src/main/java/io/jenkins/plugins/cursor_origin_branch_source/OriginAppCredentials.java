@@ -44,6 +44,7 @@ import org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
+import org.kohsuke.stapler.verb.POST;
 
 public class OriginAppCredentials extends BaseStandardCredentials implements StandardUsernamePasswordCredentials {
 
@@ -378,6 +379,7 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
 
         // could override getIconClassName but Ionicons will not have the Cursor icon
 
+        @POST
         public ListBoxModel doFillInstallationIdItems(@QueryParameter String appId, @QueryParameter Secret privateKey) {
             var items = new ListBoxModel();
             if (appId.isBlank() || privateKey.getPlainText().isBlank()) {
