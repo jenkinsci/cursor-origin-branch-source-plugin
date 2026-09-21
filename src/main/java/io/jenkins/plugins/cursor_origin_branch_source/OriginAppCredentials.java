@@ -379,6 +379,7 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
 
         // could override getIconClassName but Ionicons will not have the Cursor icon
 
+        @SuppressWarnings("lgtm[jenkins/no-permission-check]")
         @POST
         public ListBoxModel doFillInstallationIdItems(@QueryParameter String appId, @QueryParameter Secret privateKey) {
             var items = new ListBoxModel();
