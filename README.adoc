@@ -25,7 +25,7 @@ You will need to request some permissions:
 * Pull requests: Read pull requests and changed files; Read check suites and runs; Create and update check suites and runs
 
 Enable some webhook events:
-* Repository: repository.pushed
+* Repository: repository.created; repository.deleted; repository.pushed
 * Pull Requests: pull_request.created; pull_request.reopened; pull_request.closed; pull_request.head_ref.pushed
 * Checks: repository.check_run.created; repository.check_run.completed
 
