@@ -1,7 +1,9 @@
 package io.jenkins.plugins.cursor_origin_branch_source;
 
+import com.cloudbees.plugins.credentials.ContextInPath;
 import com.cloudbees.plugins.credentials.CredentialsDescriptor;
 import com.cloudbees.plugins.credentials.CredentialsNameProvider;
+import com.cloudbees.plugins.credentials.CredentialsProvider;
 import com.cloudbees.plugins.credentials.CredentialsScope;
 import com.cloudbees.plugins.credentials.CredentialsSnapshotTaker;
 import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
@@ -11,10 +13,12 @@ import edu.umd.cs.findbugs.annotations.NonNull;
 import hudson.Extension;
 import hudson.ExtensionList;
 import hudson.ExtensionPoint;
+import hudson.model.ModelObject;
 import hudson.model.Run;
 import hudson.plugins.git.GitSCM;
 import hudson.plugins.git.UserRemoteConfig;
 import hudson.remoting.Channel;
+import hudson.security.AccessControlled;
 import hudson.util.ListBoxModel;
 import hudson.util.Secret;
 import io.jenkins.plugins.cursor_origin_branch_source.origin_openapi.ApiClient;
@@ -379,9 +383,14 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
 
         // could override getIconClassName but Ionicons will not have the Cursor icon
 
-        @SuppressWarnings("lgtm[jenkins/no-permission-check]")
         @POST
-        public ListBoxModel doFillInstallationIdItems(@QueryParameter String appId, @QueryParameter Secret privateKey) {
+        public ListBoxModel doFillInstallationIdItems(
+                @QueryParameter String appId, @QueryParameter Secret privateKey, @ContextInPath ModelObject context) {
+            if (context instanceof AccessControlled ac) {
+                ac.checkPermission(CredentialsProvider.CREATE);
+            } else {
+                return new ListBoxModel();
+            }
             var items = new ListBoxModel();
             if (appId.isBlank() || privateKey.getPlainText().isBlank()) {
                 items.add("(enter App ID and Key first)", "");
