@@ -146,8 +146,7 @@ class OriginChecksEventSubscriberTest {
         OriginCheckRerunCause cause = OriginChecksEventSubscriber.createCauseFromPayload(payload);
 
         assertThat(cause, instanceOf(OriginCheckRerunCause.OriginCheckRerunServiceAccountCause.class));
-        assertThat(
-                ((OriginCheckRerunCause.OriginCheckRerunServiceAccountCause) cause).getId(), is("sa_789"));
+        assertThat(((OriginCheckRerunCause.OriginCheckRerunServiceAccountCause) cause).getId(), is("sa_789"));
     }
 
     // ── fallback cause ───────────────────────────────────────────────────────

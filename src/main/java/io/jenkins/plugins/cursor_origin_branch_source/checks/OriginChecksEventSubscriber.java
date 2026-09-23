@@ -73,14 +73,16 @@ public class OriginChecksEventSubscriber implements OriginEventSubscriber {
             String id = user.path("id").asText(null);
             String email = user.path("email").asText();
             String displayName = user.path("displayName").asText(null);
-            return new OriginCheckRerunCause.OriginCheckRerunUserCause(Util.fixEmpty(id), email, Util.fixEmpty(displayName));
+            return new OriginCheckRerunCause.OriginCheckRerunUserCause(
+                    Util.fixEmpty(id), email, Util.fixEmpty(displayName));
         }
         if (!rerequestor.path("app").isMissingNode()) {
             JsonNode app = rerequestor.path("app");
             String id = app.path("id").asText(null);
             String displayName = app.path("displayName").asText(null);
             // extract the owner where the app is installed from the repo that generated this hook
-            String namespace = payload.path("repository").path("owner").path("slug").asText();
+            String namespace =
+                    payload.path("repository").path("owner").path("slug").asText();
             return new OriginCheckRerunCause.OriginCheckRerunAppCause(namespace, id, Util.fixEmpty(displayName));
         }
         if (!rerequestor.path("serviceAccount").isMissingNode()) {
@@ -91,5 +93,4 @@ public class OriginChecksEventSubscriber implements OriginEventSubscriber {
         // unknown use fallback
         return new OriginCheckRerunCause();
     }
-    
 }
