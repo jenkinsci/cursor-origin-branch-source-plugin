@@ -2,12 +2,14 @@ package io.jenkins.plugins.cursor_origin_branch_source.checks;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import edu.umd.cs.findbugs.annotations.NonNull;
-import hudson.Extension;
+import hudson.model.Queue;
 import hudson.model.Run;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginEventSubscriber;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginWebhookEvent;
+import java.util.Collections;
 import java.util.logging.Logger;
-import jenkins.model.ParameterizedJobMixIn;
+import org.jenkinsci.plugins.variant.OptionalExtension;
+import org.jenkinsci.plugins.workflow.cps.replay.ReplayAction;
 
 /**
  * Handles check-run webhook events from Cursor Origin.
@@ -17,7 +19,7 @@ import jenkins.model.ParameterizedJobMixIn;
  * externalizable ID (set by {@link OriginChecksPublisher}), which lets us locate the original
  * build and schedule a fresh one for the same job.
  */
-@Extension
+@OptionalExtension(requirePlugins = "workflow-cps")
 public class OriginChecksEventSubscriber implements OriginEventSubscriber {
 
     private static final Logger LOGGER = Logger.getLogger(OriginChecksEventSubscriber.class.getName());
@@ -30,20 +32,32 @@ public class OriginChecksEventSubscriber implements OriginEventSubscriber {
         JsonNode payload = event.payload();
         String externalId = payload.path("checkRun").path("externalId").asText("");
         if (externalId.isEmpty()) {
-            LOGGER.fine("check_run.rerequested event has no checkRun.externalId; ignoring");
+            LOGGER.warning(
+                    "check_run.rerequested event has no checkRun.externalId; ignoring (enbable FINE logging to see more information about the event)");
+            LOGGER.fine(() ->
+                    "check_run.rerequested event payload -> " + event.payload().toPrettyString());
             return;
         }
         Run<?, ?> run = Run.fromExternalizableId(externalId);
         if (run == null) {
-            LOGGER.fine(() -> "check_run.rerequested: no run found for externalId " + externalId);
+            LOGGER.info(() -> "check_run.rerequested: no run found for externalId " + externalId);
             return;
         }
-        if (!(run.getParent() instanceof ParameterizedJobMixIn.ParameterizedJob<?, ?> job)) {
-            LOGGER.fine(() -> "check_run.rerequested: job " + run.getParent().getFullName()
-                    + " is not schedulable; ignoring");
+        if (!run.getParent().isBuildable()) {
+            LOGGER.info(() -> "check_run.rerequested: project is not buildable" + externalId);
             return;
         }
-        LOGGER.fine(() -> "check_run.rerequested: scheduling rebuild of " + run.getFullDisplayName());
-        job.scheduleBuild2(0);
+        ReplayAction action = run.getAction(ReplayAction.class);
+        if (action == null) {
+            LOGGER.info(() -> "check_run.rerequested: run is not rebuildable for externalId " + externalId);
+            return;
+        }
+        Queue.Item task = action.run2(action.getOriginalScript(), action.getOriginalLoadedScripts(), true);
+
+        if (task == null) {
+            LOGGER.info(() -> "check_run.rerequested: project is not buildable" + externalId);
+            return;
+        }
+        LOGGER.info(() -> "check_run.rerequested: scheduled rebuild of " + externalId);
     }
 }

@@ -240,7 +240,9 @@ class OriginChecksITest extends MockOriginServerTestBase {
             gen.writeEndObject();
         });
 
-        Awaitility.await().atMost(30, TimeUnit.SECONDS).until(() -> mainJob.getLastBuild().getNumber() == 2);
+        Awaitility.await()
+                .atMost(30, TimeUnit.SECONDS)
+                .until(() -> mainJob.getLastBuild().getNumber() == 2);
         r.waitUntilNoActivity();
     }
 

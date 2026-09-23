@@ -691,7 +691,8 @@ public class MockOriginServer implements Closeable {
      * @param eventType event type slug (e.g. "repository.pushed")
      * @param payloadWriter writes the event payload JSON object
      */
-    public void deliverWebhook(String hookUrl, String appId, String installationId, String eventType, JsonWriter payloadWriter)
+    public void deliverWebhook(
+            String hookUrl, String appId, String installationId, String eventType, JsonWriter payloadWriter)
             throws Exception {
         String deliveryId = "whd_" + UUID.randomUUID().toString().replace("-", "");
         long ts = Instant.now().getEpochSecond();
