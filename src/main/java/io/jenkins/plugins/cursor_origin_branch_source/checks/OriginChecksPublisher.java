@@ -129,7 +129,7 @@ class OriginChecksPublisher extends ChecksPublisher {
                 .externalId(context.getExternalId())
                 .detailsUrl(details.getDetailsUrl().orElseGet(context::getUrl));
 
-        if (context.isReplayable()) {
+        if (context.isRerunnable()) {
             run.isRerequestable(Boolean.TRUE);
         }
 

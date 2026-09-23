@@ -3,15 +3,11 @@ package io.jenkins.plugins.cursor_origin_branch_source.checks;
 import com.fasterxml.jackson.databind.JsonNode;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import hudson.Util;
-import hudson.model.CauseAction;
-import hudson.model.Queue;
 import hudson.model.Run;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginEventSubscriber;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginWebhookEvent;
-import java.util.Collections;
 import java.util.logging.Logger;
 import org.jenkinsci.plugins.variant.OptionalExtension;
-import org.jenkinsci.plugins.workflow.cps.replay.ReplayAction;
 
 /**
  * Handles check-run webhook events from Cursor Origin.
@@ -19,7 +15,12 @@ import org.jenkinsci.plugins.workflow.cps.replay.ReplayAction;
  * <p>When Origin fires {@code repository.check_run.rerequested} it means a user clicked "Re-run"
  * on a check run. The {@code checkRun.externalId} in the payload is the Jenkins run's
  * externalizable ID (set by {@link OriginChecksPublisher}), which lets us locate the original
- * build and schedule a fresh one for the same job.
+ * build and delegate scheduling to the first {@link OriginCheckRerunHandler} that claims it.
+ *
+ * <p>Although this subscriber no longer references workflow-cps directly, it is guarded as optional
+ * because there are currently no non-workflow-cps {@link OriginCheckRerunHandler} implementations;
+ * without that guard an instance would be registered for every webhook delivery even when no handler
+ * could act on it.
  */
 @OptionalExtension(requirePlugins = "workflow-cps")
 public class OriginChecksEventSubscriber implements OriginEventSubscriber {
@@ -46,24 +47,16 @@ public class OriginChecksEventSubscriber implements OriginEventSubscriber {
             return;
         }
         if (!run.getParent().isBuildable()) {
-            LOGGER.info(() -> "check_run.rerequested: project is not buildable" + externalId);
+            LOGGER.info(() -> "check_run.rerequested: project is not buildable for " + externalId);
             return;
         }
-        ReplayAction action = run.getAction(ReplayAction.class);
-        if (action == null) {
-            LOGGER.info(() -> "check_run.rerequested: run is not rebuildable for externalId " + externalId);
-            return;
+        OriginCheckRerunCause cause = createCauseFromPayload(payload);
+        boolean handled = OriginCheckRerunHandler.rerun(run, cause);
+        if (handled) {
+            LOGGER.info(() -> "check_run.rerequested: scheduled rerun of " + externalId);
+        } else {
+            LOGGER.info(() -> "check_run.rerequested: no rerun handler available for " + externalId);
         }
-        Queue.Item qi = action.run2(action.getOriginalScript(), action.getOriginalLoadedScripts(), true);
-        if (qi == null) {
-            LOGGER.info(() -> "check_run.rerequested: project is not buildable" + externalId);
-            return;
-        }
-        // record that this was triggered by an origin check rerun
-        OriginCheckRerunCause orcc = createCauseFromPayload(payload);
-        CauseAction tmpCauseAction = new CauseAction(orcc);
-        tmpCauseAction.foldIntoExisting(qi, qi.task, Collections.emptyList());
-        LOGGER.info(() -> "check_run.rerequested: scheduled rebuild of " + externalId);
     }
 
     static OriginCheckRerunCause createCauseFromPayload(JsonNode payload) {
