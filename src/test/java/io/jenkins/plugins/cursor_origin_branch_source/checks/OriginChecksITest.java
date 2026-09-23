@@ -7,6 +7,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.notNullValue;
 
 import hudson.model.Result;
 import io.jenkins.plugins.cursor_origin_branch_source.BranchDiscoveryTrait;
@@ -15,12 +16,15 @@ import io.jenkins.plugins.cursor_origin_branch_source.MockOriginServer.MockRepo;
 import io.jenkins.plugins.cursor_origin_branch_source.MockOriginServerTestBase;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginSCMSource;
 import io.jenkins.plugins.cursor_origin_branch_source.PullRequestDiscoveryTrait;
+import io.jenkins.plugins.cursor_origin_branch_source.checks.OriginCheckRerunCause.OriginCheckRerunAppCause;
+import io.jenkins.plugins.cursor_origin_branch_source.checks.OriginCheckRerunCause.OriginCheckRerunUserCause;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import jenkins.branch.BranchSource;
 import jenkins.scm.api.trait.SCMSourceTrait;
 import org.awaitility.Awaitility;
+import org.hamcrest.Matchers;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
 import org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject;
@@ -206,8 +210,7 @@ class OriginChecksITest extends MockOriginServerTestBase {
 
     /**
      * When a user clicks "Re-run" on a check run in Origin, a
-     * {@code repository.check_run.rerequested} webhook is fired. The plugin must schedule a new
-     * build for the same job.
+     * {@code repository.check_run.rerequested} webhook is fired. The plugin must replay the build that produced the check.
      */
     @Test
     void rebuildsWhenCheckRunIsRerequested() throws Exception {
@@ -236,6 +239,11 @@ class OriginChecksITest extends MockOriginServerTestBase {
             gen.writeStringField("key", "Jenkins");
             gen.writeStringField("externalId", externalId);
             gen.writeStringField("status", "rerequested");
+            gen.writeObjectFieldStart("rerequestedBy");
+            gen.writeObjectFieldStart("user");
+            gen.writeStringField("email", "joe@example.com");
+            gen.writeEndObject();
+            gen.writeEndObject();
             gen.writeEndObject();
             gen.writeEndObject();
         });
@@ -244,6 +252,10 @@ class OriginChecksITest extends MockOriginServerTestBase {
                 .atMost(30, TimeUnit.SECONDS)
                 .until(() -> mainJob.getLastBuild().getNumber() == 2);
         r.waitUntilNoActivity();
+
+        OriginCheckRerunCause cause = mainJob.getBuildByNumber(2).getCause(OriginCheckRerunCause.class);
+        assertThat(cause, notNullValue());
+        assertThat(cause, Matchers.instanceOf(OriginCheckRerunUserCause.class));
     }
 
     /** Builds a multibranch project, indexes it and waits for the branch builds to finish. */

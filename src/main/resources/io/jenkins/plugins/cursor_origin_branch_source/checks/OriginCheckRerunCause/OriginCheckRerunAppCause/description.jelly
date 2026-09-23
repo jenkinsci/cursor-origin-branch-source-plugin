@@ -1,0 +1,11 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core">
+    <j:choose>
+      <j:when test="${it.displayName == null}">
+        ${%Rerun_by_app(it.namesapce, it.appId)}
+      </j:when>
+      <j:otherwise>
+          ${%Rerun_by_app_with_displayName(it.namesapce, it.appId, it.displayName)}
+      </j:otherwise>
+    </j:choose>
+</j:jelly>

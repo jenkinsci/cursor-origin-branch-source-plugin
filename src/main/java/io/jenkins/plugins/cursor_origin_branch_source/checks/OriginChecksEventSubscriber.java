@@ -2,6 +2,8 @@ package io.jenkins.plugins.cursor_origin_branch_source.checks;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import edu.umd.cs.findbugs.annotations.NonNull;
+import hudson.Util;
+import hudson.model.CauseAction;
 import hudson.model.Queue;
 import hudson.model.Run;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginEventSubscriber;
@@ -52,12 +54,42 @@ public class OriginChecksEventSubscriber implements OriginEventSubscriber {
             LOGGER.info(() -> "check_run.rerequested: run is not rebuildable for externalId " + externalId);
             return;
         }
-        Queue.Item task = action.run2(action.getOriginalScript(), action.getOriginalLoadedScripts(), true);
-
-        if (task == null) {
+        Queue.Item qi = action.run2(action.getOriginalScript(), action.getOriginalLoadedScripts(), true);
+        if (qi == null) {
             LOGGER.info(() -> "check_run.rerequested: project is not buildable" + externalId);
             return;
         }
+        // record that this was triggered by an origin check rerun
+        OriginCheckRerunCause orcc = createCauseFromPayload(payload);
+        CauseAction tmpCauseAction = new CauseAction(orcc);
+        tmpCauseAction.foldIntoExisting(qi, qi.task, Collections.emptyList());
         LOGGER.info(() -> "check_run.rerequested: scheduled rebuild of " + externalId);
     }
+
+    static OriginCheckRerunCause createCauseFromPayload(JsonNode payload) {
+        JsonNode rerequestor = payload.path("checkRun").path("rerequestedBy");
+        if (!rerequestor.path("user").isMissingNode()) {
+            JsonNode user = rerequestor.path("user");
+            String id = user.path("id").asText(null);
+            String email = user.path("email").asText();
+            String displayName = user.path("displayName").asText(null);
+            return new OriginCheckRerunCause.OriginCheckRerunUserCause(Util.fixEmpty(id), email, Util.fixEmpty(displayName));
+        }
+        if (!rerequestor.path("app").isMissingNode()) {
+            JsonNode app = rerequestor.path("app");
+            String id = app.path("id").asText(null);
+            String displayName = app.path("displayName").asText(null);
+            // extract the owner where the app is installed from the repo that generated this hook
+            String namespace = payload.path("repository").path("owner").path("slug").asText();
+            return new OriginCheckRerunCause.OriginCheckRerunAppCause(namespace, id, Util.fixEmpty(displayName));
+        }
+        if (!rerequestor.path("serviceAccount").isMissingNode()) {
+            JsonNode serviceAccount = rerequestor.path("serviceAccount");
+            String id = serviceAccount.path("id").asText(null);
+            return new OriginCheckRerunCause.OriginCheckRerunServiceAccountCause(id);
+        }
+        // unknown use fallback
+        return new OriginCheckRerunCause();
+    }
+    
 }
