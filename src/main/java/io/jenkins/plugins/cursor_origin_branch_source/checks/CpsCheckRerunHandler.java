@@ -18,7 +18,7 @@ public class CpsCheckRerunHandler extends OriginCheckRerunHandler {
     private static final Logger LOGGER = Logger.getLogger(CpsCheckRerunHandler.class.getName());
 
     @Override
-    public boolean isRerunnable(@NonNull Run<?, ?> run) {
+    public boolean canRerun(@NonNull Run<?, ?> run) {
         return run.getAction(ReplayAction.class) != null;
     }
 
@@ -30,8 +30,8 @@ public class CpsCheckRerunHandler extends OriginCheckRerunHandler {
         }
         Queue.Item qi = action.run2(action.getOriginalScript(), action.getOriginalLoadedScripts(), true);
         if (qi == null) {
-            LOGGER.info(() -> "check_run.rerequested: replay scheduling returned no queue item for "
-                    + run.getExternalizableId());
+            LOGGER.info(() ->
+                    "check_run.rerequested: replay scheduling returned no queue item for " + run.getExternalizableId());
             return false;
         }
         CauseAction causeAction = new CauseAction(cause);

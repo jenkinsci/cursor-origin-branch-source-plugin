@@ -145,7 +145,7 @@ class OriginChecksContext {
 
     /** Whether any registered {@link OriginCheckRerunHandler} can rerun this build. */
     boolean isRerunnable() {
-        return OriginCheckRerunHandler.all().stream().anyMatch(h -> h.isRerunnable(run));
+        return OriginCheckRerunHandler.isRerunnable(run);
     }
 
     /** Creates an Origin API client authenticated as the app the SCM source is configured with. */

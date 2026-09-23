@@ -16,7 +16,7 @@ import hudson.model.Run;
 public abstract class OriginCheckRerunHandler implements ExtensionPoint {
 
     /** Returns whether this handler can rerun {@code run}. */
-    public abstract boolean isRerunnable(@NonNull Run<?, ?> run);
+    public abstract boolean canRerun(@NonNull Run<?, ?> run);
 
     /**
      * Schedules a rerun of {@code run} caused by {@code cause}.
@@ -25,9 +25,11 @@ public abstract class OriginCheckRerunHandler implements ExtensionPoint {
      */
     public abstract boolean scheduleRerun(@NonNull Run<?, ?> run, @NonNull OriginCheckRerunCause cause);
 
-    /** All registered handlers in extension-point priority order. */
-    public static ExtensionList<OriginCheckRerunHandler> all() {
-        return ExtensionList.lookup(OriginCheckRerunHandler.class);
+    /**
+     * Returns if there is any {@code OriginCheckRerunHandler} that can rerun the given run.
+     */
+    public static boolean isRerunnable(Run<?, ?> run) {
+        return ExtensionList.lookup(OriginCheckRerunHandler.class).stream().anyMatch(h -> h.canRerun(run));
     }
 
     /**
@@ -36,8 +38,8 @@ public abstract class OriginCheckRerunHandler implements ExtensionPoint {
      * @return {@code true} if a handler accepted and scheduled the rerun
      */
     static boolean rerun(@NonNull Run<?, ?> run, @NonNull OriginCheckRerunCause cause) {
-        return all().stream()
-                .filter(h -> h.isRerunnable(run))
+        return ExtensionList.lookup(OriginCheckRerunHandler.class).stream()
+                .filter(h -> h.canRerun(run))
                 .findFirst()
                 .map(h -> h.scheduleRerun(run, cause))
                 .orElse(false);
