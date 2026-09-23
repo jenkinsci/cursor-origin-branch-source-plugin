@@ -19,7 +19,7 @@ public class OriginCheckRerunCause extends Cause {
 
     @Override
     public void print(TaskListener listener) {
-        listener.getLogger().println("Re-run requested by origin webhook");
+        listener.getLogger().println("Re-run requested by Origin webhook");
     }
 
     public static class OriginCheckRerunUserCause extends OriginCheckRerunCause {

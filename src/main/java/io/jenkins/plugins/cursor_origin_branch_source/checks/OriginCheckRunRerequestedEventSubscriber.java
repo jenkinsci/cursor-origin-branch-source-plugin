@@ -7,7 +7,6 @@ import hudson.model.Run;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginEventSubscriber;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginWebhookEvent;
 import java.util.logging.Logger;
-import org.jenkinsci.plugins.variant.OptionalExtension;
 
 /**
  * Handles check-run webhook events from Cursor Origin.
@@ -22,10 +21,9 @@ import org.jenkinsci.plugins.variant.OptionalExtension;
  * without that guard an instance would be registered for every webhook delivery even when no handler
  * could act on it.
  */
-@OptionalExtension(requirePlugins = "workflow-cps")
-public class OriginChecksEventSubscriber implements OriginEventSubscriber {
+public class OriginCheckRunRerequestedEventSubscriber implements OriginEventSubscriber {
 
-    private static final Logger LOGGER = Logger.getLogger(OriginChecksEventSubscriber.class.getName());
+    private static final Logger LOGGER = Logger.getLogger(OriginCheckRunRerequestedEventSubscriber.class.getName());
 
     @Override
     public void onEvent(@NonNull OriginWebhookEvent event) {
