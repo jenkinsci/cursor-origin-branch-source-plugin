@@ -143,6 +143,23 @@ class OriginChecksContext {
         return run.getExternalizableId();
     }
 
+    /**
+     * Whether this run can be replayed via workflow-cps' {@code ReplayAction}.
+     *
+     * <p>Checked via reflection so that the publisher — which has no {@code @OptionalExtension} guard
+     * — does not hard-reference a class from an optional dependency and cause a
+     * {@code NoClassDefFoundError} on installations without workflow-cps.
+     */
+    boolean isReplayable() {
+        try {
+            Class<?> replayActionClass =
+                    Class.forName("org.jenkinsci.plugins.workflow.cps.replay.ReplayAction");
+            return run.getActions().stream().anyMatch(replayActionClass::isInstance);
+        } catch (ClassNotFoundException e) {
+            return false;
+        }
+    }
+
     /** Creates an Origin API client authenticated as the app the SCM source is configured with. */
     @NonNull
     OriginServiceApi createApi() {
