@@ -21,13 +21,29 @@ To get started, you must first create Jenkins credentials of type *Cursor Origin
 In Origin, open https://cursor.com/codebase/settings/apps[Cursor Origin Apps settings] and create a new app.
 
 You will need to request some permissions:
-* Repo Contents: Read repository metadata; Read repository contents, branches, and commits
-* Pull requests: Read pull requests and changed files; Read check suites and runs; Create and update check suites and runs
+
+* *Repo Contents*:
+** `Read repository metadata`
+** `Read repository contents, branches, and commits`
+* *Pull requests*:
+** `Read pull requests and changed files`
+** `Read check suites and runs`
+** `Create and update check suites and runs`
 
 Enable some webhook events:
-* Repository: repository.created; repository.deleted; repository.pushed
-* Pull Requests: pull_request.created; pull_request.reopened; pull_request.closed; pull_request.head_ref.pushed
-* Checks: repository.check_run.created; repository.check_run.completed
+
+* *Repository*: 
+** `repository.created`
+** `repository.deleted`
+** `repository.pushed`
+* *Pull Requests*: 
+** `pull_request.created`
+** `pull_request.reopened`
+** `pull_request.closed`
+** `pull_request.head_ref.pushed`
+* *Checks*: 
+** `repository.check_run.created`
+** `repository.check_run.completed`
 
 For the webhook URL, use `+https://your.jenkins.url/cursor-origin-webhook/+` to receive events so you do not need to poll for changes.
 
