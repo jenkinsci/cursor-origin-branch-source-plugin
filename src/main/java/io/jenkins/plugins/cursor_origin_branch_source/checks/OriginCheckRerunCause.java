@@ -71,7 +71,7 @@ public class OriginCheckRerunCause extends Cause {
             return displayName;
         }
 
-        public String getNamesapce() {
+        public String getNamespace() {
             return namespace;
         }
     }

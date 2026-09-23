@@ -35,7 +35,7 @@ public class OriginChecksEventSubscriber implements OriginEventSubscriber {
         String externalId = payload.path("checkRun").path("externalId").asText("");
         if (externalId.isEmpty()) {
             LOGGER.warning(
-                    "check_run.rerequested event has no checkRun.externalId; ignoring (enbable FINE logging to see more information about the event)");
+                    "check_run.rerequested event has no checkRun.externalId; ignoring (enable FINE logging to see more information about the event)");
             LOGGER.fine(() ->
                     "check_run.rerequested event payload -> " + event.payload().toPrettyString());
             return;

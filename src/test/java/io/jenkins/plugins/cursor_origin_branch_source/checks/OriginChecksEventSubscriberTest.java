@@ -95,7 +95,7 @@ class OriginChecksEventSubscriberTest {
                 (OriginCheckRerunCause.OriginCheckRerunAppCause) cause;
         assertThat(appCause.getAppId(), is("app_456"));
         assertThat(appCause.getDisplayName(), is("Acme CI"));
-        assertThat(appCause.getNamesapce(), is("acme-corp"));
+        assertThat(appCause.getNamespace(), is("acme-corp"));
     }
 
     @Test
@@ -124,7 +124,7 @@ class OriginChecksEventSubscriberTest {
                 (OriginCheckRerunCause.OriginCheckRerunAppCause) cause;
         assertThat(appCause.getAppId(), is("app_456"));
         assertThat(appCause.getDisplayName(), is(nullValue()));
-        assertThat(appCause.getNamesapce(), is("acme-corp"));
+        assertThat(appCause.getNamespace(), is("acme-corp"));
     }
 
     // ── service account cause ────────────────────────────────────────────────
