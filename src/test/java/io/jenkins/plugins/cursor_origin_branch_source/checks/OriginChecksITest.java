@@ -10,13 +10,13 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 
 import hudson.model.Result;
+import hudson.security.FullControlOnceLoggedInAuthorizationStrategy;
 import io.jenkins.plugins.cursor_origin_branch_source.BranchDiscoveryTrait;
 import io.jenkins.plugins.cursor_origin_branch_source.MockOriginServer;
 import io.jenkins.plugins.cursor_origin_branch_source.MockOriginServer.MockRepo;
 import io.jenkins.plugins.cursor_origin_branch_source.MockOriginServerTestBase;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginSCMSource;
 import io.jenkins.plugins.cursor_origin_branch_source.PullRequestDiscoveryTrait;
-import io.jenkins.plugins.cursor_origin_branch_source.checks.OriginCheckRerunCause.OriginCheckRerunAppCause;
 import io.jenkins.plugins.cursor_origin_branch_source.checks.OriginCheckRerunCause.OriginCheckRerunUserCause;
 import java.util.List;
 import java.util.Map;
@@ -214,6 +214,10 @@ class OriginChecksITest extends MockOriginServerTestBase {
      */
     @Test
     void rebuildsWhenCheckRunIsRerequested() throws Exception {
+        r.jenkins.setSecurityRealm(r.createDummySecurityRealm());
+        FullControlOnceLoggedInAuthorizationStrategy authz = new FullControlOnceLoggedInAuthorizationStrategy();
+        authz.setAllowAnonymousRead(false);
+        r.jenkins.setAuthorizationStrategy(authz);
         String webhookUrl = r.getURL().toExternalForm() + "cursor-origin-webhook/";
         mockServer.addRepo(OWNER, "retries", "main").branch("main", MAIN_SHA).file("Jenkinsfile", JENKINSFILE);
         WorkflowMultiBranchProject project = createProject("retries", new OriginChecksTrait());
