@@ -4,11 +4,11 @@
     <f:entry title="${%App ID}" field="appId">
         <f:textbox/>
     </f:entry>
-    <f:entry title="${%Installation ID}" field="installationId">
-        <f:textbox/>
-    </f:entry>
     <f:entry title="${%Key}" field="privateKey">
         <f:secretTextarea />
+    </f:entry>
+    <f:entry title="${%Installation ID}" field="installationId">
+        <f:select/>
     </f:entry>
     <f:entry title="${%Unrestricted}" field="unrestricted">
         <f:checkbox/>

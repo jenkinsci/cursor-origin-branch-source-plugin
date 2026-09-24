@@ -1,0 +1,79 @@
+= Cursor Origin Branch Source Plugin
+
+image:https://img.shields.io/jenkins/plugin/v/cursor-origin-branch-source[Jenkins Plugin]
+image:https://img.shields.io/github/v/tag/jenkinsci/cursor-origin-branch-source-plugin?label=changelog[Changelog, link="https://github.com/jenkinsci/cursor-origin-branch-source-plugin/releases"]
+image:https://img.shields.io/jenkins/plugin/i/cursor-origin-branch-source?color=blue[Jenkins Plugin Installs, link="https://plugins.jenkins.io/cursor-origin-branch-source"]
+image:https://img.shields.io/github/contributors/jenkinsci/cursor-origin-branch-source-plugin.svg[Contributors, link="https://github.com/jenkinsci/cursor-origin-branch-source-plugin/contributors"]
+
+== Introduction
+
+The Cursor Origin Branch Source plugin allows you to use Jenkins to run CI on https://cursor.com/docs/origin[Cursor Origin] Git repositories.
+Basic usage is similar in concept to the https://plugins.jenkins.io/github-branch-source/[GitHub Branch Source plugin].
+
+[WARNING]
+====
+Cursor Origin is in “early beta” and so this plugin may be broken at any time by service changes.
+====
+
+== Defining an app
+
+To get started, you must first create Jenkins credentials of type *Cursor Origin App*.
+In Origin, open https://cursor.com/codebase/settings/apps[Cursor Origin Apps settings] and create a new app.
+
+You will need to request some permissions:
+
+* *Repo Contents*:
+** `Read repository metadata`
+** `Read repository contents, branches, and commits`
+* *Pull requests*:
+** `Read pull requests and changed files`
+** `Read check suites and runs`
+** `Create and update check suites and runs`
+
+Enable some webhook events:
+
+* *Repository*: 
+** `repository.created`
+** `repository.deleted`
+** `repository.pushed`
+* *Pull Requests*: 
+** `pull_request.created`
+** `pull_request.reopened`
+** `pull_request.closed`
+** `pull_request.head_ref.pushed`
+* *Checks*: 
+** `repository.check_run.created`
+** `repository.check_run.completed`
+
+For the webhook URL, use `+https://your.jenkins.url/cursor-origin-webhook/+` to receive events so you do not need to poll for changes.
+
+You will need to create a keypair.
+Refer to https://cursor.com/docs/api/origin#generate-an-app-signing-key[Generate an app signing key] for details.
+The public key from the keypair will need to be uploaded to your Cursor Origin app.
+Paste the private key from the keypair into *Key* in your Jenkins credentials when creating the credentials.
+
+The app can then be installed on all repositories in the codebase (namespace), or just selected repositories,
+according to what repositories you want to be able to access from Jenkins.
+
+== Using Jenkins multibranch Pipeline
+
+You can either create a *Multibranch Pipeline* folder or an *Organization Folder* in Jenkins.
+Pick *Cursor Origin* as the branch or repository source, respectively,
+select your app credentials, and configure the repository or branch settings as needed.
+
+Jenkins can build branches and/or pull requests.
+(Origin does not seem to have a concept of forks like GitHub, so pull requests are from branches within the same repository.)
+
+Support for the https://plugins.jenkins.io/checks-api/[Checks API plugin] is included,
+so every Jenkins build will report its status back to Cursor Origin.
+This can include rich details such as test failures from https://plugins.jenkins.io/junit/[JUnit plugin],
+line annotations from https://plugins.jenkins.io/warnings-ng/[Warnings Next Generation plugin],
+and more.
+
+== Contributing
+
+Refer to our https://github.com/jenkinsci/.github/blob/master/CONTRIBUTING.md[contribution guidelines]
+
+== LICENSE
+
+Licensed under MIT, see link:LICENSE.md[LICENSE]
