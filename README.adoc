@@ -42,8 +42,7 @@ Enable some webhook events:
 ** `pull_request.closed`
 ** `pull_request.head_ref.pushed`
 * *Checks*: 
-** `repository.check_run.created`
-** `repository.check_run.completed`
+** `repository.check_run.rerequested`
 
 For the webhook URL, use `+https://your.jenkins.url/cursor-origin-webhook/+` to receive events so you do not need to poll for changes.
 
