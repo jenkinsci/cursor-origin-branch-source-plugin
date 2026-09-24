@@ -1,4 +1,4 @@
 <?jelly escape-by-default='true'?>
 <j:jelly xmlns:j="jelly:core">
-    ${%Rerun_by_user(it.email)}
+    ${%Requested_by_user(it.email)}
 </j:jelly>

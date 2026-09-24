@@ -7,6 +7,8 @@ import static org.hamcrest.Matchers.nullValue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import hudson.model.Run;
+import java.io.IOException;
 import org.junit.jupiter.api.Test;
 
 class OriginCheckRunRerequestedEventSubscriberTest {
@@ -31,7 +33,8 @@ class OriginCheckRunRerequestedEventSubscriberTest {
                 }
                 """);
 
-        OriginCheckRerunCause cause = OriginCheckRunRerequestedEventSubscriber.createCauseFromPayload(payload);
+        OriginCheckRerunCause cause =
+                OriginCheckRunRerequestedEventSubscriber.createCauseFromPayload(mockRun(), payload);
 
         assertThat(cause, instanceOf(OriginCheckRerunCause.OriginCheckRerunUserCause.class));
         OriginCheckRerunCause.OriginCheckRerunUserCause userCause =
@@ -56,7 +59,8 @@ class OriginCheckRunRerequestedEventSubscriberTest {
                 }
                 """);
 
-        OriginCheckRerunCause cause = OriginCheckRunRerequestedEventSubscriber.createCauseFromPayload(payload);
+        OriginCheckRerunCause cause =
+                OriginCheckRunRerequestedEventSubscriber.createCauseFromPayload(mockRun(), payload);
 
         assertThat(cause, instanceOf(OriginCheckRerunCause.OriginCheckRerunUserCause.class));
         OriginCheckRerunCause.OriginCheckRerunUserCause userCause =
@@ -88,7 +92,8 @@ class OriginCheckRunRerequestedEventSubscriberTest {
                 }
                 """);
 
-        OriginCheckRerunCause cause = OriginCheckRunRerequestedEventSubscriber.createCauseFromPayload(payload);
+        OriginCheckRerunCause cause =
+                OriginCheckRunRerequestedEventSubscriber.createCauseFromPayload(mockRun(), payload);
 
         assertThat(cause, instanceOf(OriginCheckRerunCause.OriginCheckRerunAppCause.class));
         OriginCheckRerunCause.OriginCheckRerunAppCause appCause =
@@ -117,7 +122,8 @@ class OriginCheckRunRerequestedEventSubscriberTest {
                 }
                 """);
 
-        OriginCheckRerunCause cause = OriginCheckRunRerequestedEventSubscriber.createCauseFromPayload(payload);
+        OriginCheckRerunCause cause =
+                OriginCheckRunRerequestedEventSubscriber.createCauseFromPayload(mockRun(), payload);
 
         assertThat(cause, instanceOf(OriginCheckRerunCause.OriginCheckRerunAppCause.class));
         OriginCheckRerunCause.OriginCheckRerunAppCause appCause =
@@ -143,7 +149,8 @@ class OriginCheckRunRerequestedEventSubscriberTest {
                 }
                 """);
 
-        OriginCheckRerunCause cause = OriginCheckRunRerequestedEventSubscriber.createCauseFromPayload(payload);
+        OriginCheckRerunCause cause =
+                OriginCheckRunRerequestedEventSubscriber.createCauseFromPayload(mockRun(), payload);
 
         assertThat(cause, instanceOf(OriginCheckRerunCause.OriginCheckRerunServiceAccountCause.class));
         assertThat(((OriginCheckRerunCause.OriginCheckRerunServiceAccountCause) cause).getId(), is("sa_789"));
@@ -159,8 +166,14 @@ class OriginCheckRunRerequestedEventSubscriberTest {
                 }
                 """);
 
-        OriginCheckRerunCause cause = OriginCheckRunRerequestedEventSubscriber.createCauseFromPayload(payload);
+        OriginCheckRerunCause cause =
+                OriginCheckRunRerequestedEventSubscriber.createCauseFromPayload(mockRun(), payload);
 
         assertThat(cause.getClass(), is(OriginCheckRerunCause.class));
+    }
+
+    private static Run<?, ?> mockRun() throws IOException {
+        FakeJob job = new FakeJob("folder", "project");
+        return new FakeRun(job, 42);
     }
 }

@@ -2,6 +2,7 @@ package io.jenkins.plugins.cursor_origin_branch_source.checks;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import edu.umd.cs.findbugs.annotations.NonNull;
+import hudson.Extension;
 import hudson.Util;
 import hudson.model.Run;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginEventSubscriber;
@@ -21,9 +22,12 @@ import java.util.logging.Logger;
  * without that guard an instance would be registered for every webhook delivery even when no handler
  * could act on it.
  */
+@Extension
 public class OriginCheckRunRerequestedEventSubscriber implements OriginEventSubscriber {
 
     private static final Logger LOGGER = Logger.getLogger(OriginCheckRunRerequestedEventSubscriber.class.getName());
+
+    private OriginSCMFacade originSCMFacade = new OriginSCMFacade();
 
     @Override
     public void onEvent(@NonNull OriginWebhookEvent event) {
@@ -48,7 +52,12 @@ public class OriginCheckRunRerequestedEventSubscriber implements OriginEventSubs
             LOGGER.info(() -> "check_run.rerequested: project is not buildable for " + externalId);
             return;
         }
-        OriginCheckRerunCause cause = createCauseFromPayload(payload);
+        if (originSCMFacade.findOriginSCMSource(run.getParent()).isEmpty()) {
+            LOGGER.info(() -> "check_run.rerequested: project is not using OriginSCM for " + externalId);
+            return;
+        }
+
+        OriginCheckRerunCause cause = createCauseFromPayload(run, payload);
         boolean handled = OriginCheckRerunHandler.rerun(run, cause);
         if (handled) {
             LOGGER.info(() -> "check_run.rerequested: scheduled rerun of " + externalId);
@@ -57,7 +66,7 @@ public class OriginCheckRunRerequestedEventSubscriber implements OriginEventSubs
         }
     }
 
-    static OriginCheckRerunCause createCauseFromPayload(JsonNode payload) {
+    static OriginCheckRerunCause createCauseFromPayload(Run<?, ?> rebuildOf, JsonNode payload) {
         JsonNode rerequestor = payload.path("checkRun").path("rerequestedBy");
         if (!rerequestor.path("user").isMissingNode()) {
             JsonNode user = rerequestor.path("user");
@@ -65,7 +74,7 @@ public class OriginCheckRunRerequestedEventSubscriber implements OriginEventSubs
             String email = user.path("email").asText();
             String displayName = user.path("displayName").asText(null);
             return new OriginCheckRerunCause.OriginCheckRerunUserCause(
-                    Util.fixEmpty(id), email, Util.fixEmpty(displayName));
+                    rebuildOf, Util.fixEmpty(id), email, Util.fixEmpty(displayName));
         }
         if (!rerequestor.path("app").isMissingNode()) {
             JsonNode app = rerequestor.path("app");
@@ -74,14 +83,15 @@ public class OriginCheckRunRerequestedEventSubscriber implements OriginEventSubs
             // extract the owner where the app is installed from the repo that generated this hook
             String namespace =
                     payload.path("repository").path("owner").path("slug").asText();
-            return new OriginCheckRerunCause.OriginCheckRerunAppCause(namespace, id, Util.fixEmpty(displayName));
+            return new OriginCheckRerunCause.OriginCheckRerunAppCause(
+                    rebuildOf, namespace, id, Util.fixEmpty(displayName));
         }
         if (!rerequestor.path("serviceAccount").isMissingNode()) {
             JsonNode serviceAccount = rerequestor.path("serviceAccount");
             String id = serviceAccount.path("id").asText(null);
-            return new OriginCheckRerunCause.OriginCheckRerunServiceAccountCause(id);
+            return new OriginCheckRerunCause.OriginCheckRerunServiceAccountCause(rebuildOf, id);
         }
         // unknown use fallback
-        return new OriginCheckRerunCause();
+        return new OriginCheckRerunCause(rebuildOf);
     }
 }

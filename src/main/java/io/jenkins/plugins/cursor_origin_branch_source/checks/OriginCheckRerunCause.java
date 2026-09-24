@@ -3,6 +3,7 @@ package io.jenkins.plugins.cursor_origin_branch_source.checks;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.Nullable;
 import hudson.model.Cause;
+import hudson.model.Run;
 import hudson.model.TaskListener;
 
 /**
@@ -10,11 +11,35 @@ import hudson.model.TaskListener;
  */
 public class OriginCheckRerunCause extends Cause {
 
-    protected OriginCheckRerunCause() {}
+    private final int originalBuildNumber;
+    private transient Run<?, ?> run;
+
+    protected OriginCheckRerunCause(Run<?, ?> rerunBuild) {
+        originalBuildNumber = rerunBuild.getNumber();
+    }
 
     @Override
     public String getShortDescription() {
         return Messages.checkRerunCause_shortDescription();
+    }
+
+    public int getOrigininalBuildNumber() {
+        return originalBuildNumber;
+    }
+
+    @CheckForNull
+    public Run<?, ?> getOriginalRun() {
+        return run.getParent().getBuildByNumber(originalBuildNumber);
+    }
+
+    @Override
+    public void onAddedTo(Run build) {
+        this.run = build;
+    }
+
+    @Override
+    public void onLoad(Run<?, ?> build) {
+        this.run = build;
     }
 
     @Override
@@ -30,7 +55,8 @@ public class OriginCheckRerunCause extends Cause {
         @CheckForNull
         private final String displayName;
 
-        OriginCheckRerunUserCause(String id, String email, @Nullable String displayName) {
+        OriginCheckRerunUserCause(Run<?, ?> rebuildOf, String id, String email, @Nullable String displayName) {
+            super(rebuildOf);
             this.id = id;
             this.email = email;
             this.displayName = displayName;
@@ -57,7 +83,8 @@ public class OriginCheckRerunCause extends Cause {
         @CheckForNull
         private final String displayName;
 
-        OriginCheckRerunAppCause(String namespace, String appId, String displayName) {
+        OriginCheckRerunAppCause(Run<?, ?> rebuildOf, String namespace, String appId, String displayName) {
+            super(rebuildOf);
             this.namespace = namespace;
             this.appId = appId;
             this.displayName = displayName;
@@ -79,7 +106,8 @@ public class OriginCheckRerunCause extends Cause {
     public static class OriginCheckRerunServiceAccountCause extends OriginCheckRerunCause {
         private final String id;
 
-        OriginCheckRerunServiceAccountCause(String id) {
+        OriginCheckRerunServiceAccountCause(Run<?, ?> rebuildOf, String id) {
+            super(rebuildOf);
             this.id = id;
         }
 
