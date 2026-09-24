@@ -245,7 +245,7 @@ class OriginChecksITest extends MockOriginServerTestBase {
             gen.writeStringField("status", "rerequested");
             gen.writeObjectFieldStart("rerequestedBy");
             gen.writeObjectFieldStart("user");
-            gen.writeStringField("email", "joe@example.com");
+            gen.writeStringField("email", "joe@example.com <a href=\"javascript:alert()\">boo</a>");
             gen.writeEndObject();
             gen.writeEndObject();
             gen.writeEndObject();

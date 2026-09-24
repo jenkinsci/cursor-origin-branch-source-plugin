@@ -1,4 +1,0 @@
-<?jelly escape-by-default='true'?>
-<j:jelly xmlns:j="jelly:core">
-    ${%Requested_by_user(it.email)}
-</j:jelly>

@@ -3,7 +3,7 @@
     <j:set var="original" value="${it.originalRun}"/>
     <j:choose>
         <j:when test="${original != null}">
-            ${%Rerun_of_build(original)}
+            ${%Rerun_of_build(rootURL, original)}
             <br/>
             <st:include page="actorDetails.jelly"/>
         </j:when>
