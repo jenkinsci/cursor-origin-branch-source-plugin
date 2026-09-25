@@ -79,6 +79,9 @@ class OriginChecksITest extends MockOriginServerTestBase {
         assertThat(
                 checkRun.getDetailsUrl(), containsString(project.getItem("main").getUrl()));
         assertThat(checkRun.getOutputTitle(), is("Success"));
+        // Origin only offers a "Re-run" button when the report opts in, and
+        // rebuildsWhenCheckRunIsRerequested only covers what happens once it is clicked.
+        assertThat(checkRun.getIsRerequestable(), is(true));
     }
 
     /**
