@@ -23,7 +23,7 @@ public class OriginCheckRerunCause extends Cause {
         return Messages.checkRerunCause_shortDescription();
     }
 
-    public int getOrigininalBuildNumber() {
+    public int getOriginalBuildNumber() {
         return originalBuildNumber;
     }
 

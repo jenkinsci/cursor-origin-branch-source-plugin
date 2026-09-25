@@ -8,7 +8,7 @@
             <st:include page="actorDetails.jelly"/>
         </j:when>
         <j:otherwise>
-            ${%Rerun_of_buildnumber(it.origininalBuildNumber)}
+            ${%Rerun_of_buildnumber(it.originalBuildNumber)}
             <br/>
             <st:include page="actorDetails.jelly"/>
         </j:otherwise>
