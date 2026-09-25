@@ -227,16 +227,58 @@ class OriginChecksITest extends MockOriginServerTestBase {
 
         String externalId = mockServer.checkRun(OWNER, "retries", "Jenkins").getExternalId();
 
+        deliverRerequest(webhookUrl, "retries", project.getFullName(), externalId);
+
+        Awaitility.await()
+                .atMost(30, TimeUnit.SECONDS)
+                .until(() -> mainJob.getLastBuild().getNumber() == 2);
+        r.waitUntilNoActivity();
+
+        OriginCheckRerunCause cause = mainJob.getBuildByNumber(2).getCause(OriginCheckRerunCause.class);
+        assertThat(cause, notNullValue());
+        assertThat(cause, Matchers.instanceOf(OriginCheckRerunUserCause.class));
+    }
+
+    /**
+     * A valid signature only proves Cursor Origin sent the delivery, not that the {@code externalId}
+     * it carries belongs to the repository it names. Any repository the app is installed on can put an
+     * arbitrary {@code externalId} on one of its own check runs and rerequest it, so a check run from
+     * an unrelated repository must not be able to rerun this job.
+     */
+    @Test
+    void ignoresARerequestFromAnotherRepository() throws Exception {
+        String webhookUrl = r.getURL().toExternalForm() + "cursor-origin-webhook/";
+        mockServer.addRepo(OWNER, "retries", "main").branch("main", MAIN_SHA).file("Jenkinsfile", JENKINSFILE);
+        mockServer.addRepo(OWNER, "strangers", "main").branch("main", MAIN_SHA).file("Jenkinsfile", JENKINSFILE);
+        WorkflowMultiBranchProject project = createProject("retries", new OriginChecksTrait());
+        createProject("strangers", new OriginChecksTrait());
+
+        WorkflowJob mainJob = project.getItem("main");
+        assertThat(mainJob.getLastBuild().getNumber(), is(1));
+
+        String externalId = mockServer.checkRun(OWNER, "retries", "Jenkins").getExternalId();
+
+        // Names the stranger repository but carries the externalId of the retries build.
+        deliverRerequest(webhookUrl, "strangers", project.getFullName(), externalId);
+
+        r.waitUntilNoActivity();
+
+        assertThat(mainJob.getLastBuild().getNumber(), is(1));
+    }
+
+    /** Delivers a {@code repository.check_run.rerequested} webhook for {@code repoName}. */
+    private void deliverRerequest(String webhookUrl, String repoName, String suiteKey, String externalId)
+            throws Exception {
         mockServer.deliverWebhook(webhookUrl, APP_ID, INSTALLATION_ID, "repository.check_run.rerequested", gen -> {
             gen.writeStartObject();
             gen.writeObjectFieldStart("repository");
             gen.writeObjectFieldStart("owner");
             gen.writeStringField("slug", OWNER);
             gen.writeEndObject();
-            gen.writeStringField("name", "retries");
+            gen.writeStringField("name", repoName);
             gen.writeEndObject();
             gen.writeObjectFieldStart("checkSuite");
-            gen.writeStringField("key", project.getFullName());
+            gen.writeStringField("key", suiteKey);
             gen.writeEndObject();
             gen.writeObjectFieldStart("checkRun");
             gen.writeStringField("sha", MAIN_SHA);
@@ -251,15 +293,6 @@ class OriginChecksITest extends MockOriginServerTestBase {
             gen.writeEndObject();
             gen.writeEndObject();
         });
-
-        Awaitility.await()
-                .atMost(30, TimeUnit.SECONDS)
-                .until(() -> mainJob.getLastBuild().getNumber() == 2);
-        r.waitUntilNoActivity();
-
-        OriginCheckRerunCause cause = mainJob.getBuildByNumber(2).getCause(OriginCheckRerunCause.class);
-        assertThat(cause, notNullValue());
-        assertThat(cause, Matchers.instanceOf(OriginCheckRerunUserCause.class));
     }
 
     /** Builds a multibranch project, indexes it and waits for the branch builds to finish. */

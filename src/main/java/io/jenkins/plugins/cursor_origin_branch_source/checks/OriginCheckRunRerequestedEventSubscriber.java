@@ -6,7 +6,9 @@ import hudson.Extension;
 import hudson.Util;
 import hudson.model.Run;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginEventSubscriber;
+import io.jenkins.plugins.cursor_origin_branch_source.OriginSCMSource;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginWebhookEvent;
+import java.util.Optional;
 import java.util.logging.Logger;
 
 /**
@@ -17,10 +19,10 @@ import java.util.logging.Logger;
  * externalizable ID (set by {@link OriginChecksPublisher}), which lets us locate the original
  * build and delegate scheduling to the first {@link OriginCheckRerunHandler} that claims it.
  *
- * <p>Although this subscriber no longer references workflow-cps directly, it is guarded as optional
- * because there are currently no non-workflow-cps {@link OriginCheckRerunHandler} implementations;
- * without that guard an instance would be registered for every webhook delivery even when no handler
- * could act on it.
+ * <p>A verified signature only establishes that Cursor Origin sent the delivery, not that the
+ * {@code externalId} it carries belongs to the repository the event names. Since anyone able to
+ * create a check run can choose its {@code externalId}, the run this resolves to is only rerun once
+ * its {@link OriginSCMSource} is confirmed to track the repository the event was fired for.
  */
 @Extension
 public class OriginCheckRunRerequestedEventSubscriber implements OriginEventSubscriber {
@@ -52,8 +54,20 @@ public class OriginCheckRunRerequestedEventSubscriber implements OriginEventSubs
             LOGGER.info(() -> "check_run.rerequested: project is not buildable for " + externalId);
             return;
         }
-        if (originSCMFacade.findOriginSCMSource(run.getParent()).isEmpty()) {
+        Optional<OriginSCMSource> source = originSCMFacade.findOriginSCMSource(run.getParent());
+        if (source.isEmpty()) {
             LOGGER.info(() -> "check_run.rerequested: project is not using OriginSCM for " + externalId);
+            return;
+        }
+        // The externalId alone selects the run, so without tying it to the repository the event was
+        // fired for, a check run in one repository could rerun a job built from an unrelated one.
+        JsonNode repository = payload.path("repository");
+        String eventOwner = repository.path("owner").path("slug").asText("");
+        String eventRepository = repository.path("name").asText("");
+        if (!eventOwner.equals(source.get().getRepoOwner())
+                || !eventRepository.equals(source.get().getRepository())) {
+            LOGGER.warning(() -> "check_run.rerequested: event repository " + eventOwner + "/" + eventRepository
+                    + " does not back " + externalId + "; ignoring");
             return;
         }
 
