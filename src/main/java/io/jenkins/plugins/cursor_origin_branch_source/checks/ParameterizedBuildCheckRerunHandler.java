@@ -15,7 +15,7 @@ import jenkins.model.ParameterizedJobMixIn.ParameterizedJob;
 import jenkins.scm.api.SCMRevisionAction;
 
 /**
- * Rerun handler for {@code ParamterizedBuild}, that copies the previous builds {@code SCMRevisionAction}.
+ * Rerun handler for {@code ParameterizedBuild}s, that copies the previous build's {@code SCMRevisionAction}.
  */
 @Extension
 public class ParameterizedBuildCheckRerunHandler extends OriginCheckRerunHandler {
