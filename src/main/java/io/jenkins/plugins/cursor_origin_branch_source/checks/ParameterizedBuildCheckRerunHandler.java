@@ -15,7 +15,7 @@ import jenkins.model.ParameterizedJobMixIn.ParameterizedJob;
 import jenkins.scm.api.SCMRevisionAction;
 
 /**
- * Rerun handler for workflow-cps pipelines, using the built-in replay mechanism.
+ * Rerun handler for {@code ParamterizedBuild}, that copies the previous builds {@code SCMRevisionAction}.
  */
 @Extension
 public class ParameterizedBuildCheckRerunHandler extends OriginCheckRerunHandler {
