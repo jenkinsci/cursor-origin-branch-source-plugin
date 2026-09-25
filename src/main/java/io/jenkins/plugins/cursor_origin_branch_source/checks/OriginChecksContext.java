@@ -143,6 +143,11 @@ class OriginChecksContext {
         return run.getExternalizableId();
     }
 
+    /** Whether any registered {@link OriginCheckRerunHandler} can rerun this build. */
+    boolean isRerunnable() {
+        return OriginCheckRerunHandler.isRerunnable(run);
+    }
+
     /** Creates an Origin API client authenticated as the app the SCM source is configured with. */
     @NonNull
     OriginServiceApi createApi() {

@@ -156,6 +156,7 @@ public class MockOriginServer implements Closeable {
         private String outputTitle;
         private String outputSummary;
         private String outputText;
+        private Boolean isRerequestable;
         private OffsetDateTime externalUpdatedAt;
         private final List<MockAnnotation> annotations = new ArrayList<>();
         private final List<String> reportedStates = new ArrayList<>();
@@ -226,6 +227,15 @@ public class MockOriginServer implements Closeable {
 
         public String getOutputText() {
             return outputText;
+        }
+
+        /**
+         * Whether the check run opted into Origin offering a "Re-run" button, or {@code null} if the
+         * report left the field out. Nullable so that a test can tell an omitted flag from an explicit
+         * one.
+         */
+        public Boolean getIsRerequestable() {
+            return isRerequestable;
         }
 
         public List<MockAnnotation> getAnnotations() {
@@ -691,7 +701,8 @@ public class MockOriginServer implements Closeable {
      * @param eventType event type slug (e.g. "repository.pushed")
      * @param payloadWriter writes the event payload JSON object
      */
-    void deliverWebhook(String hookUrl, String appId, String installationId, String eventType, JsonWriter payloadWriter)
+    public void deliverWebhook(
+            String hookUrl, String appId, String installationId, String eventType, JsonWriter payloadWriter)
             throws Exception {
         String deliveryId = "whd_" + UUID.randomUUID().toString().replace("-", "");
         long ts = Instant.now().getEpochSecond();
@@ -848,6 +859,8 @@ public class MockOriginServer implements Closeable {
         checkRun.externalId = run.path("externalId").asText(null);
         checkRun.startedAt = run.path("startedAt").asText(null);
         checkRun.completedAt = run.path("completedAt").asText(null);
+        checkRun.isRerequestable =
+                run.has("isRerequestable") ? run.path("isRerequestable").asBoolean() : null;
         JsonNode output = run.path("output");
         checkRun.outputTitle = output.path("title").asText(null);
         checkRun.outputSummary = output.path("summary").asText(null);
@@ -1053,7 +1066,7 @@ public class MockOriginServer implements Closeable {
     // ── JSON helpers ─────────────────────────────────────────────────────────
 
     @FunctionalInterface
-    interface JsonWriter {
+    public interface JsonWriter {
         void write(JsonGenerator gen) throws IOException;
     }
 

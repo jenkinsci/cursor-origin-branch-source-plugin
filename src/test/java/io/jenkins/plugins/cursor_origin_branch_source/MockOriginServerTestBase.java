@@ -85,6 +85,7 @@ public abstract class MockOriginServerTestBase {
         store.addCredentials(Domain.global(), credentials);
 
         r.jenkins.setQuietPeriod(0);
+        OriginWebhookVerifier.clearCache();
     }
 
     /** The app credentials registered in the Jenkins credentials store under {@link #CREDS_ID}. */

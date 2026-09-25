@@ -7,18 +7,25 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.notNullValue;
 
 import hudson.model.Result;
+import hudson.security.FullControlOnceLoggedInAuthorizationStrategy;
 import io.jenkins.plugins.cursor_origin_branch_source.BranchDiscoveryTrait;
 import io.jenkins.plugins.cursor_origin_branch_source.MockOriginServer;
 import io.jenkins.plugins.cursor_origin_branch_source.MockOriginServer.MockRepo;
 import io.jenkins.plugins.cursor_origin_branch_source.MockOriginServerTestBase;
 import io.jenkins.plugins.cursor_origin_branch_source.OriginSCMSource;
 import io.jenkins.plugins.cursor_origin_branch_source.PullRequestDiscoveryTrait;
+import io.jenkins.plugins.cursor_origin_branch_source.checks.OriginCheckRerunCause.OriginCheckRerunUserCause;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import jenkins.branch.BranchSource;
 import jenkins.scm.api.trait.SCMSourceTrait;
+import org.awaitility.Awaitility;
+import org.hamcrest.Matchers;
+import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
 import org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject;
 import org.junit.jupiter.api.Test;
@@ -72,6 +79,9 @@ class OriginChecksITest extends MockOriginServerTestBase {
         assertThat(
                 checkRun.getDetailsUrl(), containsString(project.getItem("main").getUrl()));
         assertThat(checkRun.getOutputTitle(), is("Success"));
+        // Origin only offers a "Re-run" button when the report opts in, and
+        // rebuildsWhenCheckRunIsRerequested only covers what happens once it is clicked.
+        assertThat(checkRun.getIsRerequestable(), is(true));
     }
 
     /**
@@ -199,6 +209,93 @@ class OriginChecksITest extends MockOriginServerTestBase {
         createProject("cogs", trait);
 
         assertThat(mockServer.checkRuns(OWNER, "cogs"), is(empty()));
+    }
+
+    /**
+     * When a user clicks "Re-run" on a check run in Origin, a
+     * {@code repository.check_run.rerequested} webhook is fired. The plugin must replay the build that produced the check.
+     */
+    @Test
+    void rebuildsWhenCheckRunIsRerequested() throws Exception {
+        r.jenkins.setSecurityRealm(r.createDummySecurityRealm());
+        FullControlOnceLoggedInAuthorizationStrategy authz = new FullControlOnceLoggedInAuthorizationStrategy();
+        authz.setAllowAnonymousRead(false);
+        r.jenkins.setAuthorizationStrategy(authz);
+        String webhookUrl = r.getURL().toExternalForm() + "cursor-origin-webhook/";
+        mockServer.addRepo(OWNER, "retries", "main").branch("main", MAIN_SHA).file("Jenkinsfile", JENKINSFILE);
+        WorkflowMultiBranchProject project = createProject("retries", new OriginChecksTrait());
+
+        WorkflowJob mainJob = project.getItem("main");
+        assertThat(mainJob.getLastBuild().getNumber(), is(1));
+
+        String externalId = mockServer.checkRun(OWNER, "retries", "Jenkins").getExternalId();
+
+        deliverRerequest(webhookUrl, "retries", project.getFullName(), externalId);
+
+        Awaitility.await()
+                .atMost(30, TimeUnit.SECONDS)
+                .until(() -> mainJob.getLastBuild().getNumber() == 2);
+        r.waitUntilNoActivity();
+
+        OriginCheckRerunCause cause = mainJob.getBuildByNumber(2).getCause(OriginCheckRerunCause.class);
+        assertThat(cause, notNullValue());
+        assertThat(cause, Matchers.instanceOf(OriginCheckRerunUserCause.class));
+    }
+
+    /**
+     * A valid signature only proves Cursor Origin sent the delivery, not that the {@code externalId}
+     * it carries belongs to the repository it names. Any repository the app is installed on can put an
+     * arbitrary {@code externalId} on one of its own check runs and rerequest it, so a check run from
+     * an unrelated repository must not be able to rerun this job.
+     */
+    @Test
+    void ignoresARerequestFromAnotherRepository() throws Exception {
+        String webhookUrl = r.getURL().toExternalForm() + "cursor-origin-webhook/";
+        mockServer.addRepo(OWNER, "retries", "main").branch("main", MAIN_SHA).file("Jenkinsfile", JENKINSFILE);
+        mockServer.addRepo(OWNER, "strangers", "main").branch("main", MAIN_SHA).file("Jenkinsfile", JENKINSFILE);
+        WorkflowMultiBranchProject project = createProject("retries", new OriginChecksTrait());
+        createProject("strangers", new OriginChecksTrait());
+
+        WorkflowJob mainJob = project.getItem("main");
+        assertThat(mainJob.getLastBuild().getNumber(), is(1));
+
+        String externalId = mockServer.checkRun(OWNER, "retries", "Jenkins").getExternalId();
+
+        // Names the stranger repository but carries the externalId of the retries build.
+        deliverRerequest(webhookUrl, "strangers", project.getFullName(), externalId);
+
+        r.waitUntilNoActivity();
+
+        assertThat(mainJob.getLastBuild().getNumber(), is(1));
+    }
+
+    /** Delivers a {@code repository.check_run.rerequested} webhook for {@code repoName}. */
+    private void deliverRerequest(String webhookUrl, String repoName, String suiteKey, String externalId)
+            throws Exception {
+        mockServer.deliverWebhook(webhookUrl, APP_ID, INSTALLATION_ID, "repository.check_run.rerequested", gen -> {
+            gen.writeStartObject();
+            gen.writeObjectFieldStart("repository");
+            gen.writeObjectFieldStart("owner");
+            gen.writeStringField("slug", OWNER);
+            gen.writeEndObject();
+            gen.writeStringField("name", repoName);
+            gen.writeEndObject();
+            gen.writeObjectFieldStart("checkSuite");
+            gen.writeStringField("key", suiteKey);
+            gen.writeEndObject();
+            gen.writeObjectFieldStart("checkRun");
+            gen.writeStringField("sha", MAIN_SHA);
+            gen.writeStringField("key", "Jenkins");
+            gen.writeStringField("externalId", externalId);
+            gen.writeStringField("status", "rerequested");
+            gen.writeObjectFieldStart("rerequestedBy");
+            gen.writeObjectFieldStart("user");
+            gen.writeStringField("email", "joe@example.com");
+            gen.writeEndObject();
+            gen.writeEndObject();
+            gen.writeEndObject();
+            gen.writeEndObject();
+        });
     }
 
     /** Builds a multibranch project, indexes it and waits for the branch builds to finish. */
