@@ -73,7 +73,7 @@ Notes for pull requests:
 
 - Include tests. The test suite uses JenkinsRule plus a mock Origin server
   (`MockOriginServer`/`MockGitServer`), so most behaviour can be covered without a real Origin
-  codebase.
+  codebase.  Do not utilize `Mockito` in your tests.
 - Keep the commit history meaningful and the change focused; unrelated cleanups are easier to
   review separately.
 - Import classes at the top of the file rather than using fully-qualified names inline.
