@@ -71,11 +71,7 @@ and more.
 
 == Contributing
 
-Refer to link:CONTRIBUTING.md[CONTRIBUTING.md],
-which also points at the standard Jenkins https://github.com/jenkinsci/.github/blob/master/CONTRIBUTING.md[contribution guidelines].
-
-Note that this plugin is intentionally opinionated: it will not grow options to support every possible setup,
-but well written and tested extension points that other plugins can implement may be accepted.
+Refer to link:CONTRIBUTING.md[CONTRIBUTING.md].
 
 == LICENSE
 
