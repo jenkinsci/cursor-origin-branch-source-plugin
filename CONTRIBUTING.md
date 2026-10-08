@@ -55,7 +55,7 @@ accepted. To stand a good chance, an extension point should:
 
 ## Working on the code
 
-Requirements: JDK 21 (the version the plugin is built and tested with in CI) and Maven 3.9 or newer.
+Requirements: LTS JDK 21 or higher (JDK 25 is used in CI) and Maven 3.9 or newer.
 
 ```sh
 mvn verify            # compile, run tests, run static analysis and format checks
