@@ -37,7 +37,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
-import jenkins.security.SlaveToMasterCallable;
+import jenkins.agents.AgentToControllerCallable;
 import jenkins.util.JenkinsJVM;
 import org.jenkinsci.plugins.variant.OptionalExtension;
 import org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition;
@@ -272,7 +272,7 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
             return new DelegatingOriginAppCredentials(
                     getId(),
                     getDescription(),
-                    new EncryptedObject<>(
+                    new AgentToControllerCallable.EncryptedObject<>(
                             new TokenMintingData(appId, installationId, privateKey.getPlainText(), repo)));
         }
         return this;
@@ -283,7 +283,7 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
             implements Serializable {}
 
     private record DelegatingOriginAppCredentials(
-            String id, String description, EncryptedObject<TokenMintingData> trustedData)
+            String id, String description, AgentToControllerCallable.EncryptedObject<TokenMintingData> trustedData)
             implements StandardUsernamePasswordCredentials, Serializable {
 
         @NonNull
@@ -329,17 +329,8 @@ public class OriginAppCredentials extends BaseStandardCredentials implements Sta
         }
     }
 
-    private static final class MintToken extends SlaveToMasterCallable<String, Exception> {
-
-        @Serial
-        private static final long serialVersionUID = 1L;
-
-        private final EncryptedObject<TokenMintingData> trustedData;
-
-        MintToken(EncryptedObject<TokenMintingData> trustedData) {
-            this.trustedData = trustedData;
-        }
-
+    private record MintToken(EncryptedObject<TokenMintingData> trustedData)
+            implements AgentToControllerCallable<String, Exception> {
         @Override
         public String call() throws Exception {
             return doMintToken(
