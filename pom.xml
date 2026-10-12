@@ -57,7 +57,7 @@
       <dependency>
         <groupId>org.jenkins-ci.plugins</groupId>
         <artifactId>git</artifactId>
-        <version>5.10.2-rc5585.581c5c1290d0</version>
+        <version>5.11.0</version>
       </dependency>
     </dependencies>
   </dependencyManagement>
