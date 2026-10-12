@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import hudson.Extension;
 import hudson.ExtensionList;
 import hudson.model.UnprotectedRootAction;
+import hudson.security.ACL;
+import hudson.security.ACLContext;
 import hudson.security.csrf.CrumbExclusion;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -102,11 +104,14 @@ public class OriginWebhookEndpoint implements UnprotectedRootAction {
         LOGGER.fine(() -> "Dispatching webhook event: " + eventType);
         OriginWebhookEvent event = new OriginWebhookEvent(
                 eventType, payload, appId, installationId, Instant.now(), SCMEvent.originOf(req));
-        for (OriginEventSubscriber subscriber : ExtensionList.lookup(OriginEventSubscriber.class)) {
-            try {
-                subscriber.onEvent(event);
-            } catch (Exception e) {
-                LOGGER.log(Level.WARNING, "Subscriber " + subscriber.getClass().getName() + " threw", e);
+        try (ACLContext as2 = ACL.as2(ACL.SYSTEM2)) {
+            for (OriginEventSubscriber subscriber : ExtensionList.lookup(OriginEventSubscriber.class)) {
+                try {
+                    subscriber.onEvent(event);
+                } catch (Exception e) {
+                    LOGGER.log(
+                            Level.WARNING, "Subscriber " + subscriber.getClass().getName() + " threw", e);
+                }
             }
         }
     }

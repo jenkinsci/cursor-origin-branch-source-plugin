@@ -66,11 +66,16 @@ class OriginAppCredentialsLiveTest {
      * proving that the resulting token can actually be used to call representative Origin REST APIs.
      */
     @Test
-    void appAuthCanReadRepoContents() throws Exception {
-        String token = OriginAppCredentials.doMintToken(
-                appId, installationId, Files.readString(Path.of(pkFile)), null, "controller");
+    void appAuthCanReadRepoContents(@SuppressWarnings("unused") JenkinsRule r) throws Exception {
+        OriginAppCredentials creds = new OriginAppCredentials(
+                CredentialsScope.GLOBAL,
+                "credential-id",
+                "description",
+                appId,
+                installationId,
+                Secret.fromString(Files.readString(Path.of(pkFile))));
 
-        OriginServiceApi api = OriginAppCredentials.apiWithToken(token);
+        OriginServiceApi api = creds.api();
 
         Repo repo = api.originServiceGetRepo(ownerSlug, repoName);
         assertEquals(repoName, repo.getName(), "Repo name mismatch");

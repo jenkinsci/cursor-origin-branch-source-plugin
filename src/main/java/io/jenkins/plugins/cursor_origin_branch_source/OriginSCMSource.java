@@ -129,7 +129,7 @@ public class OriginSCMSource extends AbstractGitSCMSource {
         }
         listener.getLogger()
                 .println("Connecting to Cursor Origin using app credentials: " + CredentialsNameProvider.name(creds));
-        OriginServiceApi api = OriginAppCredentials.apiWithToken(creds.mintToken());
+        OriginServiceApi api = creds.api();
 
         try (OriginSCMSourceRequest request = new OriginSCMSourceContext(criteria, observer)
                 .withTraits(traits)
@@ -137,8 +137,8 @@ public class OriginSCMSource extends AbstractGitSCMSource {
 
             List<PullRequest> openPRs = Collections.emptyList();
             if (request.isFetchPRs()) {
-                ListPullRequestsResponse prResp =
-                        api.originServiceListPullRequests(repoOwner, repository, null, "open", null, null);
+                ListPullRequestsResponse prResp = api.originServiceListPullRequests(
+                        repoOwner, repository, null, "open", null, null, null, null, null, null, null, null);
                 openPRs = prResp.getPullRequests();
                 Set<String> prHeadBranches = new HashSet<>();
                 for (PullRequest pr : openPRs) {
@@ -197,7 +197,7 @@ public class OriginSCMSource extends AbstractGitSCMSource {
         if (creds == null) {
             throw new IOException("No credentials found with id: " + credentialsId);
         }
-        OriginServiceApi api = OriginAppCredentials.apiWithToken(creds.mintToken());
+        OriginServiceApi api = creds.api();
         try {
             ListBranchesResponse resp = api.originServiceListBranches(repoOwner, repository, null, null);
             Set<String> revisions = new HashSet<>();
@@ -218,7 +218,7 @@ public class OriginSCMSource extends AbstractGitSCMSource {
         if (creds == null) {
             throw new IOException("No credentials found with id: " + credentialsId);
         }
-        OriginServiceApi api = OriginAppCredentials.apiWithToken(creds.mintToken());
+        OriginServiceApi api = creds.api();
         try {
             GitRef ref = api.originServiceGetGitRef(repoOwner, repository, "heads/" + thingName);
             return new AbstractGitSCMSource.SCMRevisionImpl(
@@ -238,11 +238,11 @@ public class OriginSCMSource extends AbstractGitSCMSource {
         if (creds == null) {
             throw new IOException("No credentials found with id: " + credentialsId);
         }
-        OriginServiceApi api = OriginAppCredentials.apiWithToken(creds.mintToken());
+        OriginServiceApi api = creds.api();
         try {
             if (head instanceof OriginPullRequestSCMHead prHead) {
-                ListPullRequestsResponse resp =
-                        api.originServiceListPullRequests(repoOwner, repository, null, "open", null, null);
+                ListPullRequestsResponse resp = api.originServiceListPullRequests(
+                        repoOwner, repository, null, "open", null, null, null, null, null, null, null, null);
                 for (PullRequest pr : resp.getPullRequests()) {
                     if (prHead.getNumber().equals(pr.getNumber())) {
                         return new OriginPullRequestSCMRevision(
@@ -278,7 +278,7 @@ public class OriginSCMSource extends AbstractGitSCMSource {
             return Collections.emptyList();
         }
         try {
-            OriginServiceApi api = OriginAppCredentials.apiWithToken(creds.mintToken());
+            OriginServiceApi api = creds.api();
             PullRequest pr = api.originServiceGetPullRequest(repoOwner, repository, prHead.getNumber());
             List<Action> actions = new ArrayList<>();
             actions.add(new ObjectMetadataAction(pr.getTitle(), pr.getBody(), null));
@@ -306,7 +306,7 @@ public class OriginSCMSource extends AbstractGitSCMSource {
             return Collections.emptyList();
         }
         try {
-            OriginServiceApi api = OriginAppCredentials.apiWithToken(creds.mintToken());
+            OriginServiceApi api = creds.api();
             Repo repo = api.originServiceGetRepo(repoOwner, repository);
             String defaultBranch = repo.getDefaultBranch();
             if (defaultBranch != null && !defaultBranch.isBlank()) {

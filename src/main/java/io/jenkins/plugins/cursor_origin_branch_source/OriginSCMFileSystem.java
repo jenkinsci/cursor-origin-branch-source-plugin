@@ -91,7 +91,7 @@ class OriginSCMFileSystem extends SCMFileSystem {
             if (creds == null) {
                 return null;
             }
-            OriginServiceApi api = OriginAppCredentials.apiWithToken(creds.mintToken());
+            OriginServiceApi api = creds.api();
 
             String ref;
             if (rev instanceof OriginPullRequestSCMRevision prRev) {

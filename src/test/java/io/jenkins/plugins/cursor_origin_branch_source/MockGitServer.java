@@ -39,7 +39,7 @@ import org.eclipse.jgit.transport.UploadPack;
  * tokens were properly scoped, and enforces that scoped tokens (non-empty {@code repositoryIds})
  * only grant access to the repos they name.
  */
-class MockGitServer implements Closeable {
+public class MockGitServer implements Closeable {
 
     private static final Logger LOGGER = Logger.getLogger(MockGitServer.class.getName());
     private static final Pattern REPO_PATH = Pattern.compile("^/([^/]+)/([^/]+)\\.git(/.*)?$");
@@ -78,7 +78,7 @@ class MockGitServer implements Closeable {
      *
      * @return the HEAD commit SHA
      */
-    String addRepo(String owner, String name, String repoId, String branchName, Map<String, String> files)
+    public String addRepo(String owner, String name, String repoId, String branchName, Map<String, String> files)
             throws Exception {
         if (tempDir == null) {
             tempDir = Files.createTempDirectory("mock-git-server");

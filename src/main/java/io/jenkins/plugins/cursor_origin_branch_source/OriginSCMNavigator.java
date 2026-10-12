@@ -99,7 +99,7 @@ public class OriginSCMNavigator extends SCMNavigator {
         }
 
         TaskListener listener = observer.getListener();
-        OriginServiceApi api = OriginAppCredentials.apiWithToken(creds.mintToken());
+        OriginServiceApi api = creds.api();
         Pattern namePattern = Pattern.compile(pattern);
 
         List<SCMSourceTrait> sourceTraits = new ArrayList<>();
@@ -113,7 +113,7 @@ public class OriginSCMNavigator extends SCMNavigator {
             String pageToken = null;
             do {
                 ListAppInstallationRepositoriesResponse resp =
-                        api.originServiceListAppInstallationRepositories(null, pageToken);
+                        api.originServiceListAppInstallationRepositories(null, pageToken, null);
                 for (Repo repo : resp.getRepositories()) {
                     String ownerSlug = repo.getOwner() != null ? repo.getOwner().getSlug() : null;
                     if (!repoOwner.equals(ownerSlug)) {

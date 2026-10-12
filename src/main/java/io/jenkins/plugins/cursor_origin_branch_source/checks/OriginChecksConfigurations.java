@@ -1,0 +1,38 @@
+package io.jenkins.plugins.cursor_origin_branch_source.checks;
+
+import hudson.model.Job;
+
+/**
+ * How a job wants its Cursor Origin checks reported.
+ *
+ * <p>Implemented by {@link OriginChecksTrait} so that the settings can be configured per SCM source,
+ * and by {@link DefaultOriginChecksConfigurations} for jobs whose source has no such trait.
+ */
+interface OriginChecksConfigurations {
+
+    /**
+     * Resolves the settings for {@code job} from the {@link OriginChecksTrait} on its SCM source,
+     * falling back to the defaults when the source carries no such trait.
+     */
+    static OriginChecksConfigurations forJob(OriginSCMFacade scmFacade, Job<?, ?> job) {
+        return scmFacade
+                .findOriginSCMSource(job)
+                .flatMap(source -> source.getTraits().stream()
+                        .filter(OriginChecksConfigurations.class::isInstance)
+                        .map(OriginChecksConfigurations.class::cast)
+                        .findFirst())
+                .orElseGet(DefaultOriginChecksConfigurations::new);
+    }
+
+    /** Whether to suppress the automatic build status check entirely. */
+    boolean isSkip();
+
+    /** The settings that apply when the SCM source has no {@link OriginChecksTrait}. */
+    class DefaultOriginChecksConfigurations implements OriginChecksConfigurations {
+
+        @Override
+        public boolean isSkip() {
+            return false;
+        }
+    }
+}

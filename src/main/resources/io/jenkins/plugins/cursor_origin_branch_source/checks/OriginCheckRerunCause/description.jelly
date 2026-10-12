@@ -1,0 +1,16 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler">
+    <j:set var="original" value="${it.originalRun}"/>
+    <j:choose>
+        <j:when test="${original != null}">
+            ${%Rerun_of_build(rootURL, original.url, original.displayName)}
+            <br/>
+            <st:include page="actorDetails.jelly"/>
+        </j:when>
+        <j:otherwise>
+            ${%Rerun_of_buildnumber(it.originalBuildNumber)}
+            <br/>
+            <st:include page="actorDetails.jelly"/>
+        </j:otherwise>
+    </j:choose>
+</j:jelly>
