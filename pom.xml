@@ -100,7 +100,7 @@
       <!-- Unclear if this is important. Consider openApiNullable=false -->
       <groupId>org.openapitools</groupId>
       <artifactId>jackson-databind-nullable</artifactId>
-      <version>0.2.11</version>
+      <version>0.2.13</version>
     </dependency>
     <dependency>
       <groupId>io.jenkins.plugins</groupId>
